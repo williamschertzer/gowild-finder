@@ -1,9 +1,13 @@
-__pycache__/
+*.lock
 *.pyc
 .pytest_cache/
 .venv/
-gowild.db
+__pycache__/
+account-profile/
+browser-profile-tomorrow/
 browser-profile/
 debug/
+gowild.db
+last-*.log
 last-run.log
-account-profile/
+server.log

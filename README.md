@@ -14,8 +14,23 @@ your own computer.
   when check-in opens and when your UpFront Plus upgrade window starts.
 - **Paid seat prices.** For a trip you've booked, see which seats are open by
   type (UpFront Plus, Premium, Preferred, Standard) and what each costs.
+- **Import your trips.** Pull past and upcoming flights from your Frontier
+  account into the trip log.
 
-## Setup (once)
+## Setup on a Mac (once)
+
+```bash
+git clone https://github.com/williamschertzer/gowild-finder
+cd gowild-finder
+bash scripts/install-mac.sh
+```
+
+This installs everything into the folder and adds **GoWild Finder** to the
+Applications folder in your home folder. Double-click it (or Cmd+Space, "GoWild") and it
+opens in your browser. Drag it to the Dock to keep it handy. To update later:
+`git pull`, then run the install script again.
+
+## Setup by hand (any computer)
 
 Needs Python 3.10 or newer.
 
@@ -51,6 +66,22 @@ Frontier, go to My Trips, open that trip's seat map, then close the window. The
 app reads the seat prices the page loaded and shows them under the trip. It
 never selects or buys a seat. This window keeps its own login in
 `account-profile/`, separate from the logged-out profile used for searches.
+
+### Import trips from your Frontier account
+
+On **Pass value & trips**, press **Import from my Frontier account**. In the
+window that opens, log in, open My Trips (open each upcoming trip, and Past
+Trips), then close the window. New flights are added to the trip log. If the
+app saw that flight while checking, it fills in the cash fare. Otherwise the
+cash fare box is outlined so you can type it in. Frontier doesn't show what a
+flight would have cost in cash.
+
+### Running more than one thing at once
+
+A long check and **Check tomorrow** each use their own browser, so they can run
+side by side. Pressing a button again while its run is going does nothing.
+Seat prices and Import share the logged-in window, so do one at a time. If a
+run crashes and leaves its browser open, the next run closes it.
 
 To keep the calendar fresh, schedule `python -m gowild check` a couple of times
 a day (cron on macOS/Linux, Task Scheduler on Windows).

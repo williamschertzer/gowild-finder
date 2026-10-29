@@ -18,6 +18,8 @@ import time
 from datetime import date
 from urllib.parse import quote
 
+from .browser import ProfileLock, profile_path
+
 SEARCH_URL = "https://booking.flyfrontier.com/Flight/InternalSelect?o1={o}&d1={d}&dd1={dd}&ADT=1&mon=true&promo="
 DEBUG_DIR = os.path.join(os.path.dirname(__file__), "..", "debug")
 
@@ -159,24 +161,28 @@ def parse_results(page_html: str, extra_blobs=()) -> tuple[str, list[dict]]:
 class FrontierBrowser:
     """A logged-out Chromium with its own profile, separate from your normal browser."""
 
-    def __init__(self, headless: bool = False, min_delay: float = 15, max_delay: float = 40):
+    def __init__(self, headless: bool = False, min_delay: float = 15, max_delay: float = 40, profile: str = "browser-profile"):
         self.headless, self.min_delay, self.max_delay = headless, min_delay, max_delay
+        self.profile = profile
         self._last = 0.0
 
     def __enter__(self):
         from playwright.sync_api import sync_playwright
 
+        self._lock = ProfileLock(self.profile).__enter__()
         self._pw = sync_playwright().start()
-        profile = os.path.join(os.path.dirname(__file__), "..", "browser-profile")
         self.ctx = self._pw.chromium.launch_persistent_context(
-            profile, headless=self.headless, viewport={"width": 1280, "height": 900}, locale="en-US"
+            profile_path(self.profile), headless=self.headless, viewport={"width": 1280, "height": 900}, locale="en-US"
         )
         self.page = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
         return self
 
     def __exit__(self, *exc):
-        self.ctx.close()
-        self._pw.stop()
+        try:
+            self.ctx.close()
+            self._pw.stop()
+        finally:
+            self._lock.__exit__(*exc)
 
     def _pace(self):
         wait = self._last + random.uniform(self.min_delay, self.max_delay) - time.time()

@@ -1,18 +1,14 @@
 """Paid seat prices for a trip you've booked.
 
 Frontier only shows seat prices on the seat map (Manage Trip, or during
-booking). The app opens a browser window with its own "account" profile; you
-log in and open the seat map yourself, and the app reads the seat data the page
-loads. It never clicks or buys anything. Close the window when done.
+booking). You open the seat map yourself in the account window (see
+account.py) and the app reads the seat data the page loads.
 """
-import json
-import os
 import re
-import time
 
-from .frontier import DEBUG_DIR, _walk, _num
+from . import account
+from .frontier import _num, _walk
 
-START_URL = "https://www.flyfrontier.com/"
 _SEAT_ID = re.compile(r"^\d{1,2}[A-K]$")
 _SEAT_KEY = re.compile(r"^(seat|seatNumber|seatDesignator|unitDesignator|designator|seatId|number)$", re.I)
 _PRICE_KEY = re.compile(r"(price|amount|fee|cost)", re.I)
@@ -84,49 +80,14 @@ def summarize(seats: list[dict]) -> list[dict]:
     return sorted(out.values(), key=lambda g: order.get(g["type"], len(TYPES)))
 
 
-def capture(trip_label: str, timeout_min: float = 15) -> tuple[list[dict], list]:
-    """Open a browser, let the user reach the seat map, return (seats, raw blobs)."""
-    from playwright.sync_api import sync_playwright
-
-    blobs = []
-
-    def on_response(resp):
-        if "json" in (resp.headers.get("content-type") or ""):
-            try:
-                body = resp.text()
-                if re.search(r"seat", body, re.I) and re.search(r'"\d{1,2}[A-K]"', body):
-                    blobs.append(json.loads(body))
-            except Exception:
-                pass
-
-    profile = os.path.join(os.path.dirname(__file__), "..", "account-profile")
-    with sync_playwright() as pw:
-        ctx = pw.chromium.launch_persistent_context(profile, headless=False, viewport={"width": 1280, "height": 900})
-        ctx.on("response", on_response)
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        page.goto(START_URL)
-        print(f"Seat prices for {trip_label}:")
-        print("  1. Log in and open My Trips > your trip > seats (the seat map).")
-        print("  2. Once the seat map shows, close the browser window.")
-        deadline = time.time() + timeout_min * 60
-        closed = []
-        ctx.on("close", lambda *_: closed.append(True))
-        while not closed and time.time() < deadline:
-            try:
-                page = ctx.pages[0] if ctx.pages else None
-                if page is None:
-                    break
-                page.wait_for_timeout(1000)
-            except Exception:
-                break
-        try:
-            ctx.close()
-        except Exception:
-            pass
-
+def capture(trip_label: str) -> tuple[list[dict], list]:
+    """Open the account window, let the user reach the seat map, return (seats, raw blobs)."""
+    print(f"Seat prices for {trip_label}:")
+    blobs = account.capture(
+        lambda body: re.search(r"seat", body, re.I) and re.search(r'"\d{1,2}[A-K]"', body),
+        ["Log in and open My Trips > your trip > seats (the seat map).", "Once the seat map shows, close the browser window."],
+    )
     seats = parse_seats(blobs)
     if blobs and not seats:
-        os.makedirs(DEBUG_DIR, exist_ok=True)
-        with open(os.path.join(DEBUG_DIR, f"seats-{int(time.time())}.json"), "w") as fh:
-            json.dump(blobs, fh)
+        account.save_debug("seats", blobs)
     return seats, blobs

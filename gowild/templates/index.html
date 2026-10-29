@@ -41,5 +41,5 @@
   </table>
 </div>
 {% endif %}
-{% if log %}<div class="card"><h2>Last check</h2><pre>{{ log }}</pre><p class="muted">Refresh to update. A check pauses 15 to 40 seconds between searches, so 40 dates take about 20 minutes.</p></div>{% endif %}
+{% with hint='A check pauses 15 to 40 seconds between searches, so 40 dates take about 20 minutes. Leave its browser window alone until it finishes.' %}{% include "_job.html" %}{% endwith %}
 {% endblock %}

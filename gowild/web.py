@@ -12,7 +12,6 @@ from .db import split_codes
 from .frontier import search_url
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-LOG = os.path.join(ROOT, "last-run.log")
 
 
 def _hhmm(iso):
@@ -63,17 +62,41 @@ def month_grid(start: date, end: date, by_date: dict):
     return months
 
 
-def _spawn(*args):
-    with open(LOG, "w") as fh:
-        subprocess.Popen([sys.executable, "-m", "gowild", *args], cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+_jobs = {}  # kind -> Popen; one of each kind at a time
 
 
-def _last_log():
+def _running(kind):
+    p = _jobs.get(kind)
+    return p is not None and p.poll() is None
+
+
+def _spawn(kind, *args):
+    """Start a background run unless one of the same kind is still going."""
+    if _running(kind):
+        return False
+    with open(_log_path(kind), "w") as fh:
+        _jobs[kind] = subprocess.Popen(
+            [sys.executable, "-u", "-m", "gowild", *args], cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT
+        )
+    return True
+
+
+def _log_path(kind):
+    return os.path.join(ROOT, f"last-{kind}.log")
+
+
+def _job(kind):
+    """What the page shows about the latest run of this kind."""
     try:
-        with open(LOG) as fh:
-            return fh.read()[-2000:]
+        with open(_log_path(kind)) as fh:
+            text = fh.read()
     except OSError:
-        return ""
+        text = ""
+    lines = text.splitlines()
+    # Playwright's launch dump is noise unless something failed
+    if "Traceback" not in text and "Error" not in text:
+        lines = [l for l in lines if not l.startswith(("  - ", "    - "))]
+    return {"running": _running(kind), "log": "\n".join(lines[-25:])}
 
 
 def create_app(db_path=None):
@@ -99,7 +122,7 @@ def create_app(db_path=None):
             s["next"] = min((d for d in hit_dates if d > date.today().isoformat()), default=None)
             rows.append(s)
         default_end = min(date.today() + timedelta(days=60), rules.PASS_END)
-        return render_template("index.html", searches=rows, default_end=default_end, log=_last_log())
+        return render_template("index.html", searches=rows, default_end=default_end, job=_job("check"))
 
     @app.post("/searches")
     def add_search():
@@ -131,20 +154,25 @@ def create_app(db_path=None):
             by_date.setdefault(x["date"], []).append(x)
         start, end = date.fromisoformat(s["start_date"]), min(date.fromisoformat(s["end_date"]), rules.PASS_END)
         hits = [x for x in checks if x["flights"] and x["date"] > date.today().isoformat()]
-        return render_template("search.html", s=s, months=month_grid(start, end, by_date), hits=hits)
+        return render_template("search.html", s=s, months=month_grid(start, end, by_date), hits=hits, job=_job("check"))
 
     @app.post("/run/<kind>")
     def run(kind):
         if kind == "tomorrow":
-            _spawn("tomorrow")
+            _spawn("tomorrow", "tomorrow")
             return redirect(url_for("tomorrow"))
         args = ["check"] + (["--search", request.form["search"]] if request.form.get("search") else [])
-        _spawn(*args)
+        _spawn("check", *args)
         return redirect(request.referrer or url_for("index"))
 
     @app.post("/trips/<int:tid>/seats")
     def trip_seats(tid):
-        _spawn("seats", "--trip", str(tid))
+        _spawn("account", "seats", "--trip", str(tid))
+        return redirect(url_for("pass_value") + "#trips")
+
+    @app.post("/trips/import")
+    def import_trips():
+        _spawn("account", "import")
         return redirect(url_for("pass_value") + "#trips")
 
     @app.get("/tomorrow")
@@ -158,7 +186,7 @@ def create_app(db_path=None):
         )
         checked = max((r["checked_at"] for r in rows), default=None)
         empty_routes = [r for r in rows if not r["flights"]]
-        return render_template("tomorrow.html", day=date.fromisoformat(t), flights=flights, checked=checked, empty_routes=empty_routes, log=_last_log())
+        return render_template("tomorrow.html", day=date.fromisoformat(t), flights=flights, checked=checked, empty_routes=empty_routes, job=_job("tomorrow"))
 
     @app.route("/value", methods=["GET", "POST"])
     def pass_value():
@@ -168,6 +196,9 @@ def create_app(db_path=None):
             if f.get("action") == "settings":
                 db.set_setting(c, "pass_price", f["pass_price"])
                 db.set_setting(c, "tier", f["tier"])
+            elif f.get("action") == "update":
+                c.execute("UPDATE trips SET cash_fare=?, paid=? WHERE id=?", (float(f.get("cash_fare") or 0), float(f.get("paid") or 0), f["id"]))
+                c.commit()
             elif f.get("action") == "delete":
                 c.execute("DELETE FROM trips WHERE id=?", (f["id"],))
                 c.commit()
@@ -193,6 +224,6 @@ def create_app(db_path=None):
             t["seats_at"], snap = db.latest_seats(c, t["id"])
             t["seat_groups"] = seats.summarize(snap)
         summary = value.summarize(trips, price, rules.PASS_END)
-        return render_template("value.html", trips=trips, v=summary, price=price, tier=tier, prefill=request.args, log=_last_log())
+        return render_template("value.html", trips=trips, v=summary, price=price, tier=tier, prefill=request.args, job=_job("account"))
 
     return app
