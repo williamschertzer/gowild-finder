@@ -1,0 +1,191 @@
+"""Local web app: saved searches, GoWild calendar, tomorrow's flights, pass value."""
+import calendar
+import os
+import subprocess
+import sys
+from datetime import date, datetime, timedelta
+
+from flask import Flask, redirect, render_template, request, url_for
+
+from . import db, rules, value
+from .db import split_codes
+from .frontier import search_url
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+LOG = os.path.join(ROOT, "last-run.log")
+
+
+def _hhmm(iso):
+    return datetime.fromisoformat(iso[:16]).strftime("%-I:%M %p") if iso else "?"
+
+
+def _decorate(check):
+    """Add what the templates need to each check row."""
+    d = date.fromisoformat(check["date"])
+    early = rules.is_early_booking(d, check["origin"], check["dest"])
+    for f in check["flights"]:
+        f["dep_txt"], f["arr_txt"] = _hhmm(f["depart"]), _hhmm(f["arrive"])
+    check["early"] = early and bool(check["flights"])
+    check["url"] = search_url(check["origin"], check["dest"], check["date"])
+    return check
+
+
+def month_grid(start: date, end: date, by_date: dict):
+    """Calendar months covering start..end; each day says what we know about it."""
+    months, cur = [], date(start.year, start.month, 1)
+    today = date.today()
+    while cur <= end:
+        weeks = []
+        for week in calendar.Calendar(firstweekday=6).monthdatescalendar(cur.year, cur.month):
+            row = []
+            for d in week:
+                if d.month != cur.month:
+                    row.append(None)
+                    continue
+                checks = by_date.get(d.isoformat(), [])
+                n = sum(len(c["flights"]) for c in checks)
+                if d < start or d > end or d <= today:
+                    state = "out"
+                elif rules.is_blackout(d):
+                    state = "blackout"
+                elif not checks:
+                    state = "unchecked"
+                elif n:
+                    state = "early" if any(c["early"] for c in checks) else "gowild"
+                elif any(c["status"] in ("blocked", "error", "unparsed") for c in checks):
+                    state = "problem"
+                else:
+                    state = "none"
+                row.append({"day": d.day, "iso": d.isoformat(), "state": state, "n": n})
+            weeks.append(row)
+        months.append({"title": cur.strftime("%B %Y"), "weeks": weeks})
+        cur = date(cur.year + (cur.month == 12), cur.month % 12 + 1, 1)
+    return months
+
+
+def _spawn(*args):
+    with open(LOG, "w") as fh:
+        subprocess.Popen([sys.executable, "-m", "gowild", *args], cwd=ROOT, stdout=fh, stderr=subprocess.STDOUT)
+
+
+def _last_log():
+    try:
+        with open(LOG) as fh:
+            return fh.read()[-2000:]
+    except OSError:
+        return ""
+
+
+def create_app(db_path=None):
+    app = Flask(__name__)
+
+    def conn():
+        return db.connect(db_path)
+
+    @app.context_processor
+    def globals_():
+        return {"pass_name": rules.PASS_NAME, "today": date.today()}
+
+    @app.get("/")
+    def index():
+        c = conn()
+        rows = []
+        for s in c.execute("SELECT * FROM searches ORDER BY id DESC"):
+            s = dict(s)
+            checks = [_decorate(x) for x in db.get_checks(c, split_codes(s["origins"]), split_codes(s["destinations"]), s["start_date"], s["end_date"])]
+            hit_dates = {x["date"] for x in checks if x["flights"]}
+            s["gowild_dates"] = len(hit_dates)
+            s["early_dates"] = len({x["date"] for x in checks if x["early"]})
+            s["next"] = min((d for d in hit_dates if d > date.today().isoformat()), default=None)
+            rows.append(s)
+        default_end = min(date.today() + timedelta(days=60), rules.PASS_END)
+        return render_template("index.html", searches=rows, default_end=default_end, log=_last_log())
+
+    @app.post("/searches")
+    def add_search():
+        f = request.form
+        weekdays = "".join(sorted(f.getlist("weekdays"))) or "0123456"
+        c = conn()
+        c.execute(
+            "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays) VALUES (?,?,?,?,?,?)",
+            (f["name"] or f"{f['origins']} to {f['destinations']}", ",".join(split_codes(f["origins"])),
+             ",".join(split_codes(f["destinations"])), f["start_date"], f["end_date"], weekdays),
+        )
+        c.commit()
+        return redirect(url_for("index"))
+
+    @app.post("/searches/<int:sid>/delete")
+    def delete_search(sid):
+        c = conn()
+        c.execute("DELETE FROM searches WHERE id=?", (sid,))
+        c.commit()
+        return redirect(url_for("index"))
+
+    @app.get("/searches/<int:sid>")
+    def show_search(sid):
+        c = conn()
+        s = dict(c.execute("SELECT * FROM searches WHERE id=?", (sid,)).fetchone())
+        checks = [_decorate(x) for x in db.get_checks(c, split_codes(s["origins"]), split_codes(s["destinations"]), s["start_date"], s["end_date"])]
+        by_date = {}
+        for x in checks:
+            by_date.setdefault(x["date"], []).append(x)
+        start, end = date.fromisoformat(s["start_date"]), min(date.fromisoformat(s["end_date"]), rules.PASS_END)
+        hits = [x for x in checks if x["flights"] and x["date"] > date.today().isoformat()]
+        return render_template("search.html", s=s, months=month_grid(start, end, by_date), hits=hits)
+
+    @app.post("/run/<kind>")
+    def run(kind):
+        if kind == "tomorrow":
+            _spawn("tomorrow")
+            return redirect(url_for("tomorrow"))
+        args = ["check"] + (["--search", request.form["search"]] if request.form.get("search") else [])
+        _spawn(*args)
+        return redirect(request.referrer or url_for("index"))
+
+    @app.get("/tomorrow")
+    def tomorrow():
+        c = conn()
+        t = (date.today() + timedelta(days=1)).isoformat()
+        rows = [_decorate(dict(r, flights=__import__("json").loads(r["flights"]))) for r in c.execute("SELECT * FROM checks WHERE date=?", (t,))]
+        flights = sorted(
+            ({**f, "origin": r["origin"], "dest": r["dest"], "url": r["url"], "date": t} for r in rows for f in r["flights"]),
+            key=lambda f: f["depart"] or "",
+        )
+        checked = max((r["checked_at"] for r in rows), default=None)
+        empty_routes = [r for r in rows if not r["flights"]]
+        return render_template("tomorrow.html", day=date.fromisoformat(t), flights=flights, checked=checked, empty_routes=empty_routes, log=_last_log())
+
+    @app.route("/value", methods=["GET", "POST"])
+    def pass_value():
+        c = conn()
+        if request.method == "POST":
+            f = request.form
+            if f.get("action") == "settings":
+                db.set_setting(c, "pass_price", f["pass_price"])
+                db.set_setting(c, "tier", f["tier"])
+            elif f.get("action") == "delete":
+                c.execute("DELETE FROM trips WHERE id=?", (f["id"],))
+                c.commit()
+            else:
+                c.execute(
+                    "INSERT INTO trips (date, depart_time, origin, dest, flight_no, cash_fare, paid, confirmation, notes) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (f["date"], f.get("depart_time") or None, f["origin"].upper(), f["dest"].upper(), f.get("flight_no"),
+                     float(f.get("cash_fare") or 0), float(f.get("paid") or 0), f.get("confirmation"), f.get("notes")),
+                )
+                c.commit()
+            return redirect(url_for("pass_value"))
+        price = float(db.get_setting(c, "pass_price", rules.PASS_PRICE))
+        tier = db.get_setting(c, "tier", "none")
+        trips = [dict(t) for t in c.execute("SELECT * FROM trips ORDER BY date, depart_time")]
+        now = datetime.now()
+        for t in trips:
+            t["saved"] = round((t["cash_fare"] or 0) - (t["paid"] or 0), 2)
+            if t["depart_time"]:
+                dep = datetime.fromisoformat(f"{t['date']}T{t['depart_time']}")
+                t["upcoming"] = dep > now
+                t["checkin"] = rules.checkin_opens(dep)
+                t["upgrade"] = rules.upgrade_window_opens(dep, tier)
+        summary = value.summarize(trips, price, rules.PASS_END)
+        return render_template("value.html", trips=trips, v=summary, price=price, tier=tier, prefill=request.args)
+
+    return app
