@@ -47,8 +47,23 @@
     <li>Some guest or mesh Wi-Fi networks block devices from seeing each other. Put both on your main network.</li>
   </ol>
 </div>
-<div class="card">
+<div class="card" id="away">
   <h2>Away from home</h2>
-  <p class="muted" style="margin:0">This works on your home Wi-Fi. To use it anywhere, install Tailscale (free) on the Mac and the iPhone. It links them privately; then pair once more using the Mac's Tailscale address. Ask Claude to set this up when you want it.</p>
+  {% if ts_qr %}
+  <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">
+    <div class="qr" style="width:300px;max-width:100%;background:#fff;padding:12px;border-radius:14px">{{ ts_qr|safe }}</div>
+    <div style="flex:1 1 320px">
+      <p style="margin-top:0">Tailscale is connected. With Tailscale on, scan this code from your iPhone and add it to your Home Screen too. That icon works anywhere, on cellular or any Wi-Fi, as long as the Mac is awake and online.</p>
+      <p class="muted small" style="margin-bottom:0"><code style="word-break:break-all">{{ ts_url }}</code></p>
+    </div>
+  </div>
+  {% else %}
+  <ol style="margin:0;padding-left:1.2em">
+    <li>Install <b>Tailscale</b> (free) on this Mac from tailscale.com/download, and sign in.</li>
+    <li>Install the Tailscale app on your iPhone and sign in with the same account.</li>
+    <li>Reload this page. A second QR code appears here; scan it and add that one to your Home Screen.</li>
+  </ol>
+  <p class="muted small" style="margin-bottom:0">Tailscale links your own devices privately; nothing is opened to the internet. Keep the Mac awake (System Settings → Battery/Energy → prevent sleeping when plugged in).</p>
+  {% endif %}
 </div>
 {% endblock %}

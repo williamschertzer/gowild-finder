@@ -153,11 +153,13 @@ def create_app(db_path=None, phone_access=False):
         urls = [phone.pair_url(h, k) for h in hosts]
         listening = app.config.get("PHONE_ACCESS", False)
         t = notify.topic(c)
+        ts = phone.tailscale_address()
+        ts_url = phone.pair_url(ts, k) if ts else None
         return render_template(
             "phone.html", urls=urls, qr=phone.qr_svg(urls[0]) if urls else None, listening=listening,
             alerts=notify.enabled(c), topic=t, topic_url=f"{notify.SERVER}/{t}",
             scheduled=os.path.exists(os.path.expanduser("~/Library/LaunchAgents/local.gowild-finder.auto.plist")),
-            sent=request.args.get("sent"),
+            sent=request.args.get("sent"), ts_url=ts_url, ts_qr=phone.qr_svg(ts_url) if ts_url else None,
         )
 
     @app.post("/alerts")

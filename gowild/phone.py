@@ -53,6 +53,22 @@ def lan_addresses() -> list[str]:
     return [a for a in out if not a.startswith("127.")]
 
 
+TAILSCALE_CLIS = ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"]
+
+
+def tailscale_address() -> str | None:
+    """The Mac's Tailscale IP (100.x.y.z), if Tailscale is installed and connected."""
+    for cli in TAILSCALE_CLIS:
+        try:
+            out = subprocess.run([cli, "ip", "-4"], capture_output=True, text=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        ip = out.stdout.strip().splitlines()[0] if out.returncode == 0 and out.stdout.strip() else None
+        if ip:
+            return ip
+    return None
+
+
 def pair_url(host: str, k: str) -> str:
     return f"http://{host}:{PORT}/pair?key={k}"
 
