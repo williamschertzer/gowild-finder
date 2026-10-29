@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Saved searches</h1>
+<div class="card">
+  <h2>New search</h2>
+  <form method="post" action="{{ url_for('add_search') }}">
+    <div class="row">
+      <label>Name <input name="name" placeholder="Weekend trips"></label>
+      <label>From (codes) <input name="origins" required placeholder="DEN" size="10"></label>
+      <label>To (codes) <input name="destinations" required placeholder="LAS, MCO, SJU" size="16"></label>
+      <label>First date <input type="date" name="start_date" required value="{{ today.isoformat() }}"></label>
+      <label>Last date <input type="date" name="end_date" required value="{{ default_end.isoformat() }}"></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      {% for i, d in [('0','Mon'),('1','Tue'),('2','Wed'),('3','Thu'),('4','Fri'),('5','Sat'),('6','Sun')] %}
+      <label style="flex-direction:row;align-items:center;gap:4px"><input type="checkbox" name="weekdays" value="{{ i }}" checked>{{ d }}</label>
+      {% endfor %}
+      <button>Save search</button>
+    </div>
+  </form>
+  <p class="muted" style="margin-bottom:0">Blackout dates and dates after the pass ends are skipped automatically.</p>
+</div>
+
+{% if searches %}
+<div class="card scroll">
+  <table>
+    <tr><th>Search</th><th>Route</th><th>Dates</th><th>GoWild dates found</th><th>Next</th><th></th></tr>
+    {% for s in searches %}
+    <tr>
+      <td><a href="{{ url_for('show_search', sid=s.id) }}">{{ s.name }}</a></td>
+      <td>{{ s.origins }} → {{ s.destinations }}</td>
+      <td>{{ s.start_date }} to {{ s.end_date }}</td>
+      <td>{{ s.gowild_dates }}{% if s.early_dates %} <span class="pill early">{{ s.early_dates }} early</span>{% endif %}</td>
+      <td>{{ s.next or '' }}</td>
+      <td style="white-space:nowrap">
+        <form method="post" action="{{ url_for('run', kind='check') }}" style="display:inline"><input type="hidden" name="search" value="{{ s.name }}"><button>Check now</button></form>
+        <form method="post" action="{{ url_for('delete_search', sid=s.id) }}" style="display:inline" onsubmit="return confirm('Delete this search?')"><button class="ghost">Delete</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% if log %}<div class="card"><h2>Last check</h2><pre>{{ log }}</pre><p class="muted">Refresh to update. A check pauses 15 to 40 seconds between searches, so 40 dates take about 20 minutes.</p></div>{% endif %}
+{% endblock %}
