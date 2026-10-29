@@ -1,0 +1,16 @@
+  <form method="post" action="{{ action }}">
+    <div class="form-grid">
+      <label style="grid-column:1/-1">Name <input name="name" placeholder="Weekend trips" value="{{ s.name if s else '' }}"></label>
+      <label>From <input name="origins" required placeholder="DEN" autocapitalize="characters" value="{{ s.origins if s else '' }}"></label>
+      <label>To <input name="destinations" required placeholder="LAS, MCO" autocapitalize="characters" value="{{ s.destinations if s else '' }}"></label>
+      <label>First date <input type="date" name="start_date" required value="{{ s.start_date if s else today.isoformat() }}"></label>
+      <label>Last date <input type="date" name="end_date" required value="{{ s.end_date if s else default_end.isoformat() }}"></label>
+    </div>
+    <div class="days">
+      {% for i, d in [('0','Mon'),('1','Tue'),('2','Wed'),('3','Thu'),('4','Fri'),('5','Sat'),('6','Sun')] %}
+      <label><input type="checkbox" name="weekdays" value="{{ i }}" {{ 'checked' if not s or i in s.weekdays }}>{{ d }}</label>
+      {% endfor %}
+    </div>
+    <div class="days" style="margin-top:0"><label><input type="checkbox" name="include_blackouts" value="1" {{ 'checked' if not s or s.include_blackouts }}>Also check blackout dates</label></div>
+    <div class="actions"><button class="big">{{ submit }}</button></div>
+  </form>
