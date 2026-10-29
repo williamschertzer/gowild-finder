@@ -255,13 +255,26 @@ def create_app(db_path=None, phone_access=False):
     def show_search(sid):
         c = conn()
         s = dict(c.execute("SELECT * FROM searches WHERE id=?", (sid,)).fetchone())
-        checks = [_decorate(x) for x in db.get_checks(c, split_codes(s["origins"]), split_codes(s["destinations"]), s["start_date"], s["end_date"])]
+        all_checks = [_decorate(x) for x in db.get_checks(c, split_codes(s["origins"]), split_codes(s["destinations"]), s["start_date"], s["end_date"])]
+        future = date.today().isoformat()
+        # one tab per airport pair, plus "All", when the search has more than one pair
+        routes = [(o, d) for o in split_codes(s["origins"]) for d in split_codes(s["destinations"]) if o != d]
+        tabs = [{
+            "key": f"{o}-{d}", "label": f"{o} → {d}",
+            "dates": len({x["date"] for x in all_checks if (x["origin"], x["dest"]) == (o, d) and x["flights"] and x["date"] > future}),
+        } for o, d in routes] if len(routes) > 1 else []
+        route = request.args.get("route")
+        checks = [x for x in all_checks if f"{x['origin']}-{x['dest']}" == route] if route and any(t["key"] == route for t in tabs) else all_checks
+        if checks is all_checks:
+            route = None
         by_date = {}
         for x in checks:
             by_date.setdefault(x["date"], []).append(x)
         start, end = date.fromisoformat(s["start_date"]), min(date.fromisoformat(s["end_date"]), rules.PASS_END)
-        hits = [x for x in checks if x["flights"] and x["date"] > date.today().isoformat()]
-        return render_template("search.html", s=s, months=month_grid(start, end, by_date), hits=hits, job=_job("check"))
+        hits = [x for x in checks if x["flights"] and x["date"] > future]
+        all_dates = len({x["date"] for x in all_checks if x["flights"] and x["date"] > future})
+        return render_template("search.html", s=s, months=month_grid(start, end, by_date), hits=hits, job=_job("check"),
+                               route_tabs=tabs, route=route, all_dates=all_dates)
 
     @app.post("/run/<kind>")
     def run(kind):

@@ -6,6 +6,12 @@
 <div class="actions" style="margin-bottom:20px"><form method="post" action="{{ url_for('run', kind='check') }}"><input type="hidden" name="search" value="{{ s.name }}"><button class="big" {{ 'disabled' if job.running }}>{{ 'Checking…' if job.running else 'Check now' }}</button></form>
   <a class="btn ghost big" href="{{ url_for('edit_search', sid=s.id) }}">Edit search</a></div>
 {% include "_job.html" %}
+{% if route_tabs %}
+<nav class="tabs" aria-label="Airport pairs">
+  <a href="{{ url_for('show_search', sid=s.id) }}" class="{{ 'on' if not route }}">All routes <span class="count">{{ all_dates }}</span></a>
+  {% for t in route_tabs %}<a href="{{ url_for('show_search', sid=s.id, route=t.key) }}" class="{{ 'on' if route == t.key }}">{{ t.label }} <span class="count">{{ t.dates }}</span></a>{% endfor %}
+</nav>
+{% endif %}
 <div class="card">
   <div class="legend">
     <span><i style="background:var(--gold-bg)"></i>Early Booking</span>
