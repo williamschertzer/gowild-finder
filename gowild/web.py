@@ -25,6 +25,7 @@ def _decorate(check):
     for f in check["flights"]:
         f["dep_txt"], f["arr_txt"] = _hhmm(f["depart"]), _hhmm(f["arrive"])
     check["early"] = early and bool(check["flights"])
+    check["blackout"] = rules.is_blackout(d)
     check["url"] = search_url(check["origin"], check["dest"], check["date"])
     return check
 
@@ -45,7 +46,7 @@ def month_grid(start: date, end: date, by_date: dict):
                 n = sum(len(c["flights"]) for c in checks)
                 if d < start or d > end or d <= today:
                     state = "out"
-                elif rules.is_blackout(d):
+                elif rules.is_blackout(d) and not checks:
                     state = "blackout"
                 elif not checks:
                     state = "unchecked"
@@ -199,9 +200,9 @@ def create_app(db_path=None, phone_access=False):
         weekdays = "".join(sorted(f.getlist("weekdays"))) or "0123456"
         c = conn()
         c.execute(
-            "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays, include_blackouts) VALUES (?,?,?,?,?,?,?)",
             (f["name"] or f"{f['origins']} to {f['destinations']}", ",".join(split_codes(f["origins"])),
-             ",".join(split_codes(f["destinations"])), f["start_date"], f["end_date"], weekdays),
+             ",".join(split_codes(f["destinations"])), f["start_date"], f["end_date"], weekdays, 1 if f.get("include_blackouts") else 0),
         )
         c.commit()
         return redirect(url_for("index"))

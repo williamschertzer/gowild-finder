@@ -12,7 +12,8 @@ def dates_for(search, today: date | None = None):
     weekdays = {int(c) for c in search["weekdays"]}
     d = start
     while d <= end:
-        if d.weekday() in weekdays and not rules.is_blackout(d):
+        # blackout dates need a Peak Day charge when Frontier offers them at all; opt-in per search
+        if d.weekday() in weekdays and (search.get("include_blackouts") or not rules.is_blackout(d)):
             yield d
         d += timedelta(days=1)
 
