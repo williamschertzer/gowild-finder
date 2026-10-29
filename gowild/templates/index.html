@@ -37,9 +37,9 @@
       <label><input type="checkbox" name="weekdays" value="{{ i }}" checked>{{ d }}</label>
       {% endfor %}
     </div>
-    <div class="days" style="margin-top:0"><label><input type="checkbox" name="include_blackouts" value="1">Also check blackout dates</label></div>
+    <div class="days" style="margin-top:0"><label><input type="checkbox" name="include_blackouts" value="1" checked>Also check blackout dates</label></div>
     <div class="actions"><button class="big">Save search</button></div>
   </form>
-  <p class="muted small" style="margin-bottom:0">Use airport codes; separate several with commas. Dates after the pass ends are skipped. Blackout dates are skipped unless you tick the box: Frontier only sells GoWild on them during a Peak Day promotion ($79–$159 extra per flight), and none is running now.</p>
+  <p class="muted small" style="margin-bottom:0">Use airport codes; separate several with commas. Dates after the pass ends are skipped. Blackout dates are checked too. Frontier only sells GoWild on them during a Peak Day promotion ($79–$159 extra per flight), and none is running now, so untick the box to save lookups.</p>
 </div>
 {% endblock %}

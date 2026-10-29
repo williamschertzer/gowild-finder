@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS searches (
     start_date TEXT NOT NULL,       -- ISO dates
     end_date TEXT NOT NULL,
     weekdays TEXT NOT NULL DEFAULT '0123456', -- Mon=0 .. Sun=6
-    include_blackouts INTEGER NOT NULL DEFAULT 0,
+    include_blackouts INTEGER NOT NULL DEFAULT 1,
     active INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS checks (
@@ -54,7 +54,7 @@ def connect(path: str | None = None) -> sqlite3.Connection:
     conn.executescript(SCHEMA)
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(searches)")}
     if "include_blackouts" not in cols:  # added after the first release
-        conn.execute("ALTER TABLE searches ADD COLUMN include_blackouts INTEGER NOT NULL DEFAULT 0")
+        conn.execute("ALTER TABLE searches ADD COLUMN include_blackouts INTEGER NOT NULL DEFAULT 1")
         conn.commit()
     return conn
 

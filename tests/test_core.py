@@ -110,4 +110,4 @@ def test_old_database_gets_blackout_column(tmp_path):
     old.execute("INSERT INTO searches (name, origins, destinations, start_date, end_date) VALUES ('a','DEN','LAS','2026-11-01','2026-11-05')")
     old.commit(); old.close()
     row = db.connect(path).execute("SELECT include_blackouts FROM searches").fetchone()
-    assert row["include_blackouts"] == 0
+    assert row["include_blackouts"] == 1
