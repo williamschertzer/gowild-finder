@@ -111,3 +111,25 @@ def test_old_database_gets_blackout_column(tmp_path):
     old.commit(); old.close()
     row = db.connect(path).execute("SELECT include_blackouts FROM searches").fetchone()
     assert row["include_blackouts"] == 1
+
+
+def test_edit_search_and_blackout_calendar_states(tmp_path):
+    path = str(tmp_path / "e.db")
+    client = create_app(path).test_client()
+    form = {"name": "Vegas", "origins": "den", "destinations": "las", "start_date": "2026-11-20",
+            "end_date": "2026-11-30", "weekdays": ["0", "1", "2", "3", "4", "5", "6"], "include_blackouts": "1"}
+    client.post("/searches", data=form)
+    page = client.get("/searches/1/edit").get_data(as_text=True)
+    assert 'value="Vegas"' in page and 'value="DEN"' in page and "Save changes" in page
+    r = client.post("/searches/1/edit", data={**form, "name": "Vegas weekends", "destinations": "las, phx", "weekdays": ["4", "5"]})
+    assert r.headers["Location"].endswith("/searches/1")
+    row = db.connect(path).execute("SELECT * FROM searches").fetchone()
+    assert (row["name"], row["destinations"], row["weekdays"], row["include_blackouts"]) == ("Vegas weekends", "LAS,PHX", "45", 1)
+    edit = client.get("/searches/1/edit").get_data(as_text=True)
+    assert 'value="0" >' in edit and 'value="4" checked>' in edit  # unticked Mon, ticked Fri
+
+    from gowild.web import month_grid
+    by_date = {"2026-11-24": [{"flights": [{}], "early": True, "status": "ok"}], "2026-11-25": [{"flights": [], "early": False, "status": "no_flights"}]}
+    days = {d["iso"]: d["state"] for m in month_grid(date(2026, 11, 20), date(2026, 11, 30), by_date) for w in m["weeks"] for d in w if d}
+    if date.today() < date(2026, 11, 24):
+        assert days["2026-11-24"] == "blackout-gw" and days["2026-11-25"] == "blackout" and days["2026-11-28"] == "blackout"

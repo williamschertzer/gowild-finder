@@ -46,8 +46,8 @@ def month_grid(start: date, end: date, by_date: dict):
                 n = sum(len(c["flights"]) for c in checks)
                 if d < start or d > end or d <= today:
                     state = "out"
-                elif rules.is_blackout(d) and not checks:
-                    state = "blackout"
+                elif rules.is_blackout(d):
+                    state = "blackout-gw" if n else "blackout"  # GoWild on a blackout day needs the Peak Day charge
                 elif not checks:
                     state = "unchecked"
                 elif n:
@@ -113,6 +113,16 @@ def _job(kind):
     if "Traceback" not in text and "Error" not in text:
         lines = [l for l in lines if not l.startswith(("  - ", "    - "))]
     return {"kind": kind, "running": _running(kind), "log": "\n".join(lines[-25:])}
+
+
+def _search_fields(f):
+    """Form values for a saved search, in column order."""
+    weekdays = "".join(sorted(f.getlist("weekdays"))) or "0123456"
+    return (
+        f["name"] or f"{f['origins']} to {f['destinations']}", ",".join(split_codes(f["origins"])),
+        ",".join(split_codes(f["destinations"])), f["start_date"], f["end_date"], weekdays,
+        1 if f.get("include_blackouts") else 0,
+    )
 
 
 def create_app(db_path=None, phone_access=False):
@@ -196,16 +206,28 @@ def create_app(db_path=None, phone_access=False):
 
     @app.post("/searches")
     def add_search():
-        f = request.form
-        weekdays = "".join(sorted(f.getlist("weekdays"))) or "0123456"
         c = conn()
         c.execute(
             "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays, include_blackouts) VALUES (?,?,?,?,?,?,?)",
-            (f["name"] or f"{f['origins']} to {f['destinations']}", ",".join(split_codes(f["origins"])),
-             ",".join(split_codes(f["destinations"])), f["start_date"], f["end_date"], weekdays, 1 if f.get("include_blackouts") else 0),
+            _search_fields(request.form),
         )
         c.commit()
         return redirect(url_for("index"))
+
+    @app.route("/searches/<int:sid>/edit", methods=["GET", "POST"])
+    def edit_search(sid):
+        c = conn()
+        row = c.execute("SELECT * FROM searches WHERE id=?", (sid,)).fetchone()
+        if not row:
+            abort(404)
+        if request.method == "POST":
+            c.execute(
+                "UPDATE searches SET name=?, origins=?, destinations=?, start_date=?, end_date=?, weekdays=?, include_blackouts=? WHERE id=?",
+                (*_search_fields(request.form), sid),
+            )
+            c.commit()
+            return redirect(url_for("show_search", sid=sid))
+        return render_template("edit_search.html", s=dict(row))
 
     @app.post("/searches/<int:sid>/delete")
     def delete_search(sid):

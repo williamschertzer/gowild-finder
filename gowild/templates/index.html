@@ -13,6 +13,7 @@
       </div>
       <div class="side">
         <a class="btn ghost" href="{{ url_for('show_search', sid=s.id) }}">Calendar</a>
+        <a class="btn ghost" href="{{ url_for('edit_search', sid=s.id) }}">Edit</a>
         <form method="post" action="{{ url_for('run', kind='check') }}"><input type="hidden" name="search" value="{{ s.name }}"><button {{ 'disabled' if job.running }}>Check now</button></form>
         <form method="post" action="{{ url_for('delete_search', sid=s.id) }}" onsubmit="return confirm('Delete this search?')"><button class="ghost">Delete</button></form>
       </div>
@@ -24,22 +25,7 @@
 {% with hint='A check pauses 15 to 40 seconds between searches, so 40 dates take about 20 minutes. Its browser window runs on your Mac; leave it alone until it finishes.' %}{% include "_job.html" %}{% endwith %}
 <div class="card">
   <h2>New search</h2>
-  <form method="post" action="{{ url_for('add_search') }}">
-    <div class="form-grid">
-      <label style="grid-column:1/-1">Name <input name="name" placeholder="Weekend trips"></label>
-      <label>From <input name="origins" required placeholder="DEN" autocapitalize="characters"></label>
-      <label>To <input name="destinations" required placeholder="LAS, MCO" autocapitalize="characters"></label>
-      <label>First date <input type="date" name="start_date" required value="{{ today.isoformat() }}"></label>
-      <label>Last date <input type="date" name="end_date" required value="{{ default_end.isoformat() }}"></label>
-    </div>
-    <div class="days">
-      {% for i, d in [('0','Mon'),('1','Tue'),('2','Wed'),('3','Thu'),('4','Fri'),('5','Sat'),('6','Sun')] %}
-      <label><input type="checkbox" name="weekdays" value="{{ i }}" checked>{{ d }}</label>
-      {% endfor %}
-    </div>
-    <div class="days" style="margin-top:0"><label><input type="checkbox" name="include_blackouts" value="1" checked>Also check blackout dates</label></div>
-    <div class="actions"><button class="big">Save search</button></div>
-  </form>
+  {% with s=None, action=url_for('add_search'), submit='Save search' %}{% include "_search_form.html" %}{% endwith %}
   <p class="muted small" style="margin-bottom:0">Use airport codes; separate several with commas. Dates after the pass ends are skipped. Blackout dates are checked too. Frontier only sells GoWild on them during a Peak Day promotion ($79–$159 extra per flight), and none is running now, so untick the box to save lookups.</p>
 </div>
 {% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ s.name }}, GoWild Finder{% endblock %}
+{% block body %}
+<h1>Edit search</h1>
+<div class="card">
+  {% with action=url_for('edit_search', sid=s.id), submit='Save changes' %}{% include "_search_form.html" %}{% endwith %}
+  <p class="muted small" style="margin-bottom:0"><a href="{{ url_for('show_search', sid=s.id) }}">Cancel</a>. Dates already checked stay saved; new routes or dates are checked on the next run.</p>
+</div>
+{% endblock %}

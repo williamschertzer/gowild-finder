@@ -3,13 +3,15 @@
 {% block body %}
 <h1>{{ s.name }}</h1>
 <p class="muted" style="margin-top:-8px">{{ s.origins }} → {{ s.destinations }} · {{ s.start_date }} to {{ s.end_date }}</p>
-<div class="actions" style="margin-bottom:20px"><form method="post" action="{{ url_for('run', kind='check') }}"><input type="hidden" name="search" value="{{ s.name }}"><button class="big" {{ 'disabled' if job.running }}>{{ 'Checking…' if job.running else 'Check now' }}</button></form></div>
+<div class="actions" style="margin-bottom:20px"><form method="post" action="{{ url_for('run', kind='check') }}"><input type="hidden" name="search" value="{{ s.name }}"><button class="big" {{ 'disabled' if job.running }}>{{ 'Checking…' if job.running else 'Check now' }}</button></form>
+  <a class="btn ghost big" href="{{ url_for('edit_search', sid=s.id) }}">Edit search</a></div>
 {% include "_job.html" %}
 <div class="card">
   <div class="legend">
     <span><i style="background:var(--gold-bg)"></i>Early Booking</span>
     <span><i style="background:var(--green-bg)"></i>GoWild</span>
     <span><i style="background:var(--gray-bg)"></i>Blackout</span>
+    <span><i style="background:var(--purple-bg)"></i>Blackout with GoWild (Peak Day charge)</span>
     <span><i style="background:var(--red-bg)"></i>Couldn't check</span>
     <span class="muted">Faded: not checked yet</span>
   </div>
@@ -29,7 +31,7 @@
   <h2>GoWild flights</h2>
   {% if not hits %}<p class="muted">None found yet. Run a check, or widen the dates.</p>{% endif %}
   {% for c in hits %}
-    <div class="group-head" id="d{{ c.date }}">{{ c.date }} · {{ c.origin }} → {{ c.dest }} {% if c.blackout %}<span class="pill early">Blackout date · Peak Day charge</span>{% elif c.early %}<span class="pill early">Early Booking</span>{% else %}<span class="pill gw">GoWild</span>{% endif %} <span class="muted small" style="font-weight:400">checked {{ c.checked_at[:16].replace('T',' ') }}</span></div>
+    <div class="group-head" id="d{{ c.date }}">{{ c.date }} · {{ c.origin }} → {{ c.dest }} {% if c.blackout %}<span class="pill bo">Blackout date · Peak Day charge</span>{% elif c.early %}<span class="pill early">Early Booking</span>{% else %}<span class="pill gw">GoWild</span>{% endif %} <span class="muted small" style="font-weight:400">checked {{ c.checked_at[:16].replace('T',' ') }}</span></div>
     <div class="list">
     {% for f in c.flights %}{% with book_url=c.url, origin=c.origin, dest=c.dest, date=c.date %}{% include "_flight.html" %}{% endwith %}{% endfor %}
     </div>
