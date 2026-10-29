@@ -8,6 +8,7 @@
   serve      open the web app at http://127.0.0.1:5050 (--phone to allow your iPhone)
 """
 import argparse
+import signal
 import sys
 
 from . import db, planner
@@ -68,7 +69,13 @@ def run_import(conn):
     return 0
 
 
+def _stop_on_sigterm(*_):
+    # the Stop button sends SIGTERM; exit through the `with` blocks so the browser closes
+    raise SystemExit(130)
+
+
 def main(argv=None):
+    signal.signal(signal.SIGTERM, _stop_on_sigterm)
     p = argparse.ArgumentParser(prog="gowild", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["check", "tomorrow", "plan", "seats", "import", "serve"])
     p.add_argument("--search", help="only this saved search (name)")

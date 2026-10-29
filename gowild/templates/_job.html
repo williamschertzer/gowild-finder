@@ -1,8 +1,31 @@
 {% if job.running or job.log %}
-<div class="card">
-  <h2>{{ 'Running now' if job.running else 'Last run' }}{% if job.running %} <span class="pill early">refreshing every 10s</span>{% endif %}</h2>
-  <pre>{{ job.log or 'Starting…' }}</pre>
-  {% if hint %}<p class="muted" style="margin-bottom:0">{{ hint }}</p>{% endif %}
+<div class="card" id="job">
+  <div class="actions" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0" id="job-title">{{ 'Running now' if job.running else 'Last run' }}</h2>
+    {% if job.running %}<form method="post" action="{{ url_for('stop', kind=job.kind) }}" id="job-stop" style="flex:0 0 auto"><button class="ghost">Stop</button></form>{% endif %}</div>
+  <pre id="job-log">{{ job.log or 'Starting…' }}</pre>
+  <p id="job-done" class="actions" style="display:none;margin:0 0 10px"><span>Finished.</span> <button type="button" onclick="location.reload()">Show results</button></p>
+  {% if hint %}<p class="muted small" style="margin-bottom:0">{{ hint }}</p>{% endif %}
 </div>
-{% if job.running %}<script>setTimeout(() => location.reload(), 10000)</script>{% endif %}
+{% if job.running %}
+<script>
+// Update just this card while the run goes, so forms on the page keep what you've typed.
+(function () {
+  let typed = false;
+  document.addEventListener("input", () => { typed = true; });
+  const timer = setInterval(async () => {
+    try {
+      const j = await (await fetch("{{ url_for('job_status', kind=job.kind) }}")).json();
+      document.getElementById("job-log").textContent = j.log || "Starting…";
+      if (!j.running) {
+        clearInterval(timer);
+        document.getElementById("job-title").textContent = "Last run";
+        const stop = document.getElementById("job-stop"); if (stop) stop.remove();
+        // reload to show new results, unless you're in the middle of filling a form
+        if (typed) document.getElementById("job-done").style.display = "flex"; else location.reload();
+      }
+    } catch (e) { /* server restarting; try again next tick */ }
+  }, 5000);
+})();
+</script>
+{% endif %}
 {% endif %}
