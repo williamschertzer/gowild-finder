@@ -33,7 +33,7 @@ cat > "$APP/Contents/MacOS/launch" <<LAUNCH
 # Start the GoWild Finder server if it isn't running, then open it in your browser.
 cd "$REPO"
 if ! curl -s -o /dev/null http://127.0.0.1:5050/; then
-  nohup .venv/bin/python -m gowild serve > server.log 2>&1 &
+  nohup .venv/bin/python -m gowild serve --phone > server.log 2>&1 &
   for i in \$(seq 1 40); do curl -s -o /dev/null http://127.0.0.1:5050/ && break; sleep 0.25; done
 fi
 open http://127.0.0.1:5050/

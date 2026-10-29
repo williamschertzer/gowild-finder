@@ -1,0 +1,12 @@
+{# one GoWild flight; expects f (flight) and book_url, plus origin/dest/date #}
+<div class="item">
+  <div class="main">
+    <b>{{ f.dep_txt }}</b> <span class="muted">→ {{ f.arr_txt }}</span>
+    <div class="meta">{{ origin }} → {{ dest }} · {{ f.flight_numbers|join(', ') or 'flight ?' }}{% if f.stops %} · {{ f.stops }}{% endif %}</div>
+    <div class="meta">GoWild {{ '$%.2f'|format(f.gowild_price) if f.gowild_price is not none else 'available' }}{% if f.gowild_seats %} · {{ f.gowild_seats }} left{% endif %}{% if f.standard_fare %} · cash ${{ '%.0f'|format(f.standard_fare) }}{% endif %}</div>
+  </div>
+  <div class="side">
+    <a class="btn big" href="{{ book_url }}" target="_blank" rel="noopener">Book</a>
+    <a class="btn ghost" href="{{ url_for('pass_value', date=date, origin=origin, dest=dest, depart_time=(f.depart or '')[11:16], flight_no=f.flight_numbers|join(','), cash_fare=f.standard_fare or '', paid=f.gowild_price or '') }}#log">Log trip</a>
+  </div>
+</div>

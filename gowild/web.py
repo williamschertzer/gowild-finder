@@ -5,9 +5,9 @@ import subprocess
 import sys
 from datetime import date, datetime, timedelta
 
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, abort, make_response, redirect, render_template, request, url_for
 
-from . import db, rules, seats, value
+from . import db, phone, rules, seats, value
 from .db import split_codes
 from .frontier import search_url
 
@@ -99,15 +99,49 @@ def _job(kind):
     return {"running": _running(kind), "log": "\n".join(lines[-25:])}
 
 
-def create_app(db_path=None):
+def create_app(db_path=None, phone_access=False):
     app = Flask(__name__)
+    app.config["PHONE_ACCESS"] = phone_access
 
     def conn():
         return db.connect(db_path)
 
+    def is_local():
+        return request.remote_addr in ("127.0.0.1", "::1")
+
+    @app.before_request
+    def require_key():
+        """The Mac itself is trusted; other devices (your iPhone) need the pairing key."""
+        if is_local() or request.endpoint in ("pair", "static"):
+            return None
+        if request.cookies.get(phone.COOKIE) != phone.key(conn()):
+            return make_response(render_template("locked.html"), 403)
+
+    @app.get("/pair")
+    def pair():
+        if request.args.get("key") != phone.key(conn()):
+            abort(403)
+        resp = redirect(url_for("tomorrow"))
+        resp.set_cookie(phone.COOKIE, request.args["key"], max_age=400 * 24 * 3600, httponly=True, samesite="Lax")
+        return resp
+
+    @app.route("/phone", methods=["GET", "POST"], endpoint="phone")
+    def phone_page():
+        if not is_local():
+            abort(403)
+        c = conn()
+        if request.method == "POST":  # new key: phones paired before must scan again
+            db.set_setting(c, "phone_key", "")
+            return redirect(url_for("phone"))
+        k = phone.key(c)
+        hosts = phone.lan_addresses()
+        urls = [phone.pair_url(h, k) for h in hosts]
+        listening = app.config.get("PHONE_ACCESS", False)
+        return render_template("phone.html", urls=urls, qr=phone.qr_svg(urls[0]) if urls else None, listening=listening)
+
     @app.context_processor
     def globals_():
-        return {"pass_name": rules.PASS_NAME, "today": date.today()}
+        return {"pass_name": rules.PASS_NAME, "today": date.today(), "is_local": is_local()}
 
     @app.get("/")
     def index():

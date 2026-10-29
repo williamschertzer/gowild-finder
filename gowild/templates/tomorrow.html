@@ -1,36 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Fly tomorrow, GoWild Finder{% endblock %}
 {% block body %}
-<h1>Fly tomorrow: {{ day.strftime('%A, %b %-d') }}</h1>
+<h1>Fly tomorrow<br><span class="muted" style="font-size:.7em;font-weight:500">{{ day.strftime('%A, %b %-d') }}</span></h1>
 <div class="card">
-  <p style="margin-top:0">Regular GoWild seats for tomorrow open today. This checks every route in your saved searches for tomorrow and lists the GoWild flights by departure time.</p>
-  <div class="row">
-    <form method="post" action="{{ url_for('run', kind='tomorrow') }}"><button class="btn big" {{ 'disabled' if job.running }}>{{ 'Checking…' if job.running else 'Check tomorrow now' }}</button></form>
-    <span class="muted">{% if checked %}Last checked {{ checked[:16].replace('T',' ') }}{% else %}Not checked yet{% endif %}</span>
+  <div class="actions">
+    <form method="post" action="{{ url_for('run', kind='tomorrow') }}"><button class="big" {{ 'disabled' if job.running }}>{{ 'Checking…' if job.running else 'Check tomorrow now' }}</button></form>
+    <span class="muted small">{% if checked %}Last checked {{ checked[:16].replace('T',' ') }}{% else %}Not checked yet{% endif %}</span>
   </div>
-  <p class="muted" style="margin-bottom:0">Fastest booking: stay logged in to flyfrontier.com in your normal browser with your payment card saved, then click Book below.</p>
-</div>
-
-<div class="card scroll">
-  {% if flights %}
-  <table>
-    <tr><th>Departs</th><th>Route</th><th>Flight</th><th>GoWild</th><th>Cash fare</th><th></th></tr>
-    {% for f in flights %}
-    <tr>
-      <td><b>{{ f.dep_txt }}</b> → {{ f.arr_txt }}</td>
-      <td>{{ f.origin }} → {{ f.dest }}</td>
-      <td>{{ f.flight_numbers|join(', ') }}{% if f.stops %} · {{ f.stops }}{% endif %}</td>
-      <td>{{ '$%.2f'|format(f.gowild_price) if f.gowild_price is not none else 'yes' }}{% if f.gowild_seats %} · {{ f.gowild_seats }} left{% endif %}</td>
-      <td class="muted">{{ '$%.0f'|format(f.standard_fare) if f.standard_fare else '' }}</td>
-      <td style="white-space:nowrap"><a class="btn big" style="margin-right:8px" href="{{ f.url }}" target="_blank" rel="noopener">Book</a>
-        <a href="{{ url_for('pass_value', date=f.date, origin=f.origin, dest=f.dest, depart_time=(f.depart or '')[11:16], flight_no=f.flight_numbers|join(','), cash_fare=f.standard_fare or '', paid=f.gowild_price or '') }}#log">Log</a></td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% else %}
-  <p class="muted">No GoWild flights found for tomorrow yet.</p>
-  {% endif %}
-  {% if empty_routes %}<p class="muted">Checked with no GoWild seats: {% for r in empty_routes %}{{ r.origin }}→{{ r.dest }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+  <p class="muted small" style="margin-bottom:0">Checks every route in your saved searches for tomorrow. Fastest booking: stay logged in to Frontier (app or website) with your card saved, then tap Book.</p>
 </div>
 {% include "_job.html" %}
+<div class="card">
+  {% if flights %}
+  <div class="list">
+    {% for f in flights %}{% with book_url=f.url, origin=f.origin, dest=f.dest, date=f.date %}{% include "_flight.html" %}{% endwith %}{% endfor %}
+  </div>
+  {% else %}
+  <p class="muted" style="margin:0">No GoWild flights found for tomorrow yet.</p>
+  {% endif %}
+  {% if empty_routes %}<p class="muted small" style="margin-bottom:0">No GoWild seats: {% for r in empty_routes %}{{ r.origin }}→{{ r.dest }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+</div>
 {% endblock %}

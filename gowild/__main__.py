@@ -5,7 +5,7 @@
   plan       show what 'check' would look up, without opening a browser
   seats      read paid seat prices for a booked trip (--trip ID); you log in yourself
   import     add your past and upcoming Frontier trips to the trip log; you log in yourself
-  serve      open the web app at http://127.0.0.1:5050
+  serve      open the web app at http://127.0.0.1:5050 (--phone to allow your iPhone)
 """
 import argparse
 import sys
@@ -75,6 +75,7 @@ def main(argv=None):
     p.add_argument("--max", type=int, default=40, help="max lookups per run (default 40)")
     p.add_argument("--max-age", type=float, default=12, help="re-check dates older than this many hours")
     p.add_argument("--headless", action="store_true", help="hide the browser window (more likely to be blocked)")
+    p.add_argument("--phone", action="store_true", help="serve: also allow your paired iPhone on the same Wi-Fi")
     p.add_argument("--trip", type=int, help="trip id for 'seats' (from the Pass value page)")
     a = p.parse_args(argv)
 
@@ -82,7 +83,9 @@ def main(argv=None):
     if a.command == "serve":
         from .web import create_app
 
-        create_app().run(host="127.0.0.1", port=5050, debug=False)
+        if a.phone:
+            print("Phone access on: your iPhone can reach this app over Wi-Fi once paired (see the iPhone tab).")
+        create_app(phone_access=a.phone).run(host="0.0.0.0" if a.phone else "127.0.0.1", port=5050, debug=False, threaded=True)
         return 0
 
     if a.command == "seats":
