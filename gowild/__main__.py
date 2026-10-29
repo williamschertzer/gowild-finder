@@ -3,6 +3,7 @@
   check      run due lookups for your saved searches (slowly, logged out)
   tomorrow   check every saved route for tomorrow (the regular GoWild window)
   plan       show what 'check' would look up, without opening a browser
+  seats      read paid seat prices for a booked trip (--trip ID); you log in yourself
   serve      open the web app at http://127.0.0.1:5050
 """
 import argparse
@@ -36,13 +37,32 @@ def run_lookups(conn, tasks, headless, limit):
     return 0
 
 
+def run_seats(conn, trip_id):
+    from . import seats
+
+    trip = conn.execute("SELECT * FROM trips WHERE id=?", (trip_id,)).fetchone()
+    if not trip:
+        print("No such trip. Log the trip on the Pass value page first.")
+        return 1
+    found, raw = seats.capture(f"{trip['origin']}-{trip['dest']} on {trip['date']}")
+    if not found:
+        print("No seat map data seen." + (" Saved what was captured to debug/." if raw else ""))
+        return 1
+    db.save_seats(conn, trip_id, found)
+    for g in seats.summarize(found):
+        rng = f"${g['min']:.0f}" + (f"-${g['max']:.0f}" if g["max"] != g["min"] else "") if g["min"] is not None else "price ?"
+        print(f"  {g['type']}: {g['open']} open, {rng}")
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="gowild", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", choices=["check", "tomorrow", "plan", "serve"])
+    p.add_argument("command", choices=["check", "tomorrow", "plan", "seats", "serve"])
     p.add_argument("--search", help="only this saved search (name)")
     p.add_argument("--max", type=int, default=40, help="max lookups per run (default 40)")
     p.add_argument("--max-age", type=float, default=12, help="re-check dates older than this many hours")
     p.add_argument("--headless", action="store_true", help="hide the browser window (more likely to be blocked)")
+    p.add_argument("--trip", type=int, help="trip id for 'seats' (from the Pass value page)")
     a = p.parse_args(argv)
 
     conn = db.connect()
@@ -51,6 +71,9 @@ def main(argv=None):
 
         create_app().run(host="127.0.0.1", port=5050, debug=False)
         return 0
+
+    if a.command == "seats":
+        return run_seats(conn, a.trip)
 
     searches = [dict(r) for r in conn.execute("SELECT * FROM searches WHERE active=1")]
     if a.search:

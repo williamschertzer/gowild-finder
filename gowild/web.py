@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 
 from flask import Flask, redirect, render_template, request, url_for
 
-from . import db, rules, value
+from . import db, rules, seats, value
 from .db import split_codes
 from .frontier import search_url
 
@@ -142,6 +142,11 @@ def create_app(db_path=None):
         _spawn(*args)
         return redirect(request.referrer or url_for("index"))
 
+    @app.post("/trips/<int:tid>/seats")
+    def trip_seats(tid):
+        _spawn("seats", "--trip", str(tid))
+        return redirect(url_for("pass_value") + "#trips")
+
     @app.get("/tomorrow")
     def tomorrow():
         c = conn()
@@ -185,7 +190,9 @@ def create_app(db_path=None):
                 t["upcoming"] = dep > now
                 t["checkin"] = rules.checkin_opens(dep)
                 t["upgrade"] = rules.upgrade_window_opens(dep, tier)
+            t["seats_at"], snap = db.latest_seats(c, t["id"])
+            t["seat_groups"] = seats.summarize(snap)
         summary = value.summarize(trips, price, rules.PASS_END)
-        return render_template("value.html", trips=trips, v=summary, price=price, tier=tier, prefill=request.args)
+        return render_template("value.html", trips=trips, v=summary, price=price, tier=tier, prefill=request.args, log=_last_log())
 
     return app

@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS trips (
     confirmation TEXT,
     notes TEXT
 );
+CREATE TABLE IF NOT EXISTS seat_snapshots (
+    trip_id INTEGER NOT NULL,
+    captured_at TEXT NOT NULL,
+    seats TEXT NOT NULL             -- JSON list from seats.parse_seats
+);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
@@ -78,3 +83,18 @@ def get_setting(conn, key, default=None):
 def set_setting(conn, key, value):
     conn.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, str(value)))
     conn.commit()
+
+
+def save_seats(conn, trip_id, seats):
+    conn.execute(
+        "INSERT INTO seat_snapshots VALUES (?,?,?)",
+        (trip_id, datetime.now().isoformat(timespec="seconds"), json.dumps(seats)),
+    )
+    conn.commit()
+
+
+def latest_seats(conn, trip_id):
+    row = conn.execute(
+        "SELECT * FROM seat_snapshots WHERE trip_id=? ORDER BY captured_at DESC LIMIT 1", (trip_id,)
+    ).fetchone()
+    return (row["captured_at"], json.loads(row["seats"])) if row else (None, [])
