@@ -81,6 +81,21 @@ def _spawn(kind, *args):
     return True
 
 
+def _stop(kind):
+    """Ask a run to stop; it closes its browser on the way out."""
+    p = _jobs.get(kind)
+    if p is not None and p.poll() is None:
+        p.terminate()
+        try:
+            p.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            p.kill()
+        with open(_log_path(kind), "a") as fh:
+            fh.write("\nStopped.\n")
+        return True
+    return False
+
+
 def _log_path(kind):
     return os.path.join(ROOT, f"last-{kind}.log")
 
@@ -96,7 +111,7 @@ def _job(kind):
     # Playwright's launch dump is noise unless something failed
     if "Traceback" not in text and "Error" not in text:
         lines = [l for l in lines if not l.startswith(("  - ", "    - "))]
-    return {"running": _running(kind), "log": "\n".join(lines[-25:])}
+    return {"kind": kind, "running": _running(kind), "log": "\n".join(lines[-25:])}
 
 
 def create_app(db_path=None, phone_access=False):
@@ -176,6 +191,7 @@ def create_app(db_path=None, phone_access=False):
         c = conn()
         c.execute("DELETE FROM searches WHERE id=?", (sid,))
         c.commit()
+        _stop("check")  # its lookups were planned when it started, so don't let it carry on
         return redirect(url_for("index"))
 
     @app.get("/searches/<int:sid>")
@@ -208,6 +224,17 @@ def create_app(db_path=None, phone_access=False):
     def import_trips():
         _spawn("account", "import")
         return redirect(url_for("pass_value") + "#trips")
+
+    @app.post("/stop/<kind>")
+    def stop(kind):
+        _stop(kind)
+        return redirect(request.referrer or url_for("index"))
+
+    @app.get("/job/<kind>")
+    def job_status(kind):
+        if kind not in ("check", "tomorrow", "account"):
+            abort(404)
+        return _job(kind)
 
     @app.get("/tomorrow")
     def tomorrow():
