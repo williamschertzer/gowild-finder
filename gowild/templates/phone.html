@@ -24,6 +24,15 @@
   <form method="post" onsubmit="return confirm('Make a new code? Phones you paired before will need to scan again.')"><button class="ghost">Make a new pairing code</button></form>
 </div>
 <div class="card">
+  <h2>If the iPhone shows a blank page</h2>
+  <ol style="margin:0;padding-left:1.2em">
+    <li>Check this page doesn't say "Phone access is off" above.</li>
+    {% if urls %}<li>On this Mac, open <a href="{{ urls[0].split('/pair')[0] }}" target="_blank">{{ urls[0].split('/pair')[0] }}</a>. If it says "Pair this phone first", the Mac side works. If it doesn't load, the Mac's firewall is blocking it: System Settings → Network → Firewall → Options, and set Python to "Allow incoming connections".</li>{% endif %}
+    <li>Try the other address listed above on the iPhone, typed into Safari.</li>
+    <li>Some guest or mesh Wi-Fi networks block devices from seeing each other. Put both on your main network.</li>
+  </ol>
+</div>
+<div class="card">
   <h2>Away from home</h2>
   <p class="muted" style="margin:0">This works on your home Wi-Fi. To use it anywhere, install Tailscale (free) on the Mac and the iPhone. It links them privately; then pair once more using the Mac's Tailscale address. Ask Claude to set this up when you want it.</p>
 </div>
