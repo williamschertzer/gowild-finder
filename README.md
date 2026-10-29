@@ -6,7 +6,7 @@ your own computer.
 - **Saved searches with a GoWild calendar.** Save routes and a date range. The
   app checks Frontier's search for each date and marks the days with GoWild
   fares, including the new **Early Booking** select flights you can book ahead.
-- **Fly tomorrow.** One button checks every saved route for tomorrow (when
+- **Fly tomorrow.** Pick saved searches and check them for tomorrow (when
   regular GoWild seats open) and lists the flights by time with a Book link.
 - **Pass value.** Log trips with the cash fare you avoided and see savings,
   what's left to break even, and how many more trips that takes.
@@ -69,7 +69,7 @@ can also run checks from the terminal:
 ```bash
 python -m gowild plan         # list the dates a check would look up
 python -m gowild check        # run up to 40 due lookups (--max to change)
-python -m gowild tomorrow     # check every saved route for tomorrow
+python -m gowild tomorrow     # check tomorrow for the searches picked in the app (--ids 1,3)
 ```
 
 ### Seat prices for a booked trip

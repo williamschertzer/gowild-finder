@@ -1,7 +1,7 @@
 """Command line: python -m gowild <command>
 
   check      run due lookups for your saved searches (slowly, logged out)
-  tomorrow   check every saved route for tomorrow (the regular GoWild window)
+  tomorrow   check tomorrow (the regular GoWild window) for the searches picked on the Tomorrow page
   plan       show what 'check' would look up, without opening a browser
   seats      read paid seat prices for a booked trip (--trip ID); you log in yourself
   import     add your past and upcoming Frontier trips to the trip log; you log in yourself
@@ -92,6 +92,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="gowild", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=["check", "tomorrow", "plan", "seats", "import", "auto", "serve"])
     p.add_argument("--search", help="only this saved search (name)")
+    p.add_argument("--ids", help="only these saved searches, by id (e.g. 1,3)")
     p.add_argument("--max", type=int, default=40, help="max lookups per run (default 40)")
     p.add_argument("--max-age", type=float, default=12, help="re-check dates older than this many hours")
     p.add_argument("--headless", action="store_true", help="hide the browser window (more likely to be blocked)")
@@ -116,6 +117,10 @@ def main(argv=None):
     searches = [dict(r) for r in conn.execute("SELECT * FROM searches WHERE active=1")]
     if a.search:
         searches = [s for s in searches if s["name"].lower() == a.search.lower()]
+    all_searches = searches
+    if a.ids:
+        ids = {int(i) for i in a.ids.split(",") if i.strip()}
+        searches = [s for s in searches if s["id"] in ids]
     if not searches:
         print("No saved searches yet. Add one in the web app: python -m gowild serve")
         return 1
@@ -123,10 +128,11 @@ def main(argv=None):
     if a.command == "auto":
         code = run_lookups(conn, planner.plan(conn, searches, a.max_age), a.headless, a.max, offscreen=True)
         if datetime.now().hour >= 12 and code == 0:  # tomorrow's GoWild seats are open by now
-            code = run_lookups(conn, planner.tomorrow_tasks(searches), a.headless, a.max, profile="browser-profile-tomorrow", offscreen=True)
+            picked = db.tomorrow_searches(conn, all_searches)
+            code = run_lookups(conn, planner.tomorrow_tasks(picked), a.headless, a.max, profile="browser-profile-tomorrow", offscreen=True)
         return code
     if a.command == "tomorrow":
-        tasks = planner.tomorrow_tasks(searches)
+        tasks = planner.tomorrow_tasks(searches if a.ids else db.tomorrow_searches(conn, searches))
         # its own browser, so it can run while a long check is going
         return run_lookups(conn, tasks, a.headless, a.max, profile="browser-profile-tomorrow")
     tasks = planner.plan(conn, searches, a.max_age)
