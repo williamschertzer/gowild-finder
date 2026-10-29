@@ -5,37 +5,45 @@
   plan       show what 'check' would look up, without opening a browser
   seats      read paid seat prices for a booked trip (--trip ID); you log in yourself
   import     add your past and upcoming Frontier trips to the trip log; you log in yourself
+  auto       what the scheduler runs: a check, plus tomorrow's check from noon on
   serve      open the web app at http://127.0.0.1:5050 (--phone to allow your iPhone)
 """
 import argparse
 import signal
 import sys
 
-from . import db, planner
+from datetime import date, datetime
+
+from . import db, notify, planner, rules
 from .frontier import Blocked, FrontierBrowser
 
 
-def run_lookups(conn, tasks, headless, limit, profile="browser-profile"):
+def run_lookups(conn, tasks, headless, limit, profile="browser-profile", offscreen=False):
     tasks = tasks[:limit]
     print(f"{len(tasks)} lookups to run", flush=True)
     if not tasks:
         return 0
-    found = 0
-    with FrontierBrowser(headless=headless, profile=profile) as br:
+    found, finds = 0, []
+    with FrontierBrowser(headless=headless, profile=profile, offscreen=offscreen) as br:
         for i, (o, d, day) in enumerate(tasks, 1):
             try:
                 status, flights = br.lookup(o, d, day)
             except Blocked as e:
                 print(f"Stopping: {e}. Try again later, or run without --headless.")
                 db.save_check(conn, o, d, day, "blocked", [])
+                if finds:
+                    notify.send(conn, *notify.new_finds_message(finds))
                 return 2
             except Exception as e:  # keep going on one bad page
                 status, flights = "error", []
                 print(f"  error: {e}")
-            db.save_check(conn, o, d, day, status, flights)
+            if db.save_check(conn, o, d, day, status, flights):
+                finds.append((o, d, day, len(flights), rules.is_early_booking(date.fromisoformat(day), o, d)))
             found += len(flights)
             print(f"[{i}/{len(tasks)}] {o}-{d} {day}: {status}, {len(flights)} GoWild", flush=True)
     print(f"Done. {found} GoWild flights found.")
+    if finds and notify.send(conn, *notify.new_finds_message(finds)):
+        print(f"Sent an alert for {len(finds)} new date(s).")
     return 0
 
 
@@ -77,7 +85,7 @@ def _stop_on_sigterm(*_):
 def main(argv=None):
     signal.signal(signal.SIGTERM, _stop_on_sigterm)
     p = argparse.ArgumentParser(prog="gowild", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", choices=["check", "tomorrow", "plan", "seats", "import", "serve"])
+    p.add_argument("command", choices=["check", "tomorrow", "plan", "seats", "import", "auto", "serve"])
     p.add_argument("--search", help="only this saved search (name)")
     p.add_argument("--max", type=int, default=40, help="max lookups per run (default 40)")
     p.add_argument("--max-age", type=float, default=12, help="re-check dates older than this many hours")
@@ -107,6 +115,11 @@ def main(argv=None):
         print("No saved searches yet. Add one in the web app: python -m gowild serve")
         return 1
 
+    if a.command == "auto":
+        code = run_lookups(conn, planner.plan(conn, searches, a.max_age), a.headless, a.max, offscreen=True)
+        if datetime.now().hour >= 12 and code == 0:  # tomorrow's GoWild seats are open by now
+            code = run_lookups(conn, planner.tomorrow_tasks(searches), a.headless, a.max, profile="browser-profile-tomorrow", offscreen=True)
+        return code
     if a.command == "tomorrow":
         tasks = planner.tomorrow_tasks(searches)
         # its own browser, so it can run while a long check is going

@@ -7,6 +7,7 @@ once by scanning a QR code on the Mac and then keeps in a cookie.
 import io
 import secrets
 import socket
+import subprocess
 
 from . import db
 
@@ -22,18 +23,33 @@ def key(conn) -> str:
     return k
 
 
+def _bonjour_name() -> str | None:
+    """The Mac's real Bonjour name (System Settings > General > Sharing > Local hostname)."""
+    try:
+        out = subprocess.run(["scutil", "--get", "LocalHostName"], capture_output=True, text=True, timeout=3)
+        name = out.stdout.strip()
+        return f"{name}.local" if out.returncode == 0 and name else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def lan_addresses() -> list[str]:
-    """Addresses the iPhone can reach this Mac at: its Wi-Fi IP and its .local name."""
+    """Addresses the iPhone can reach this Mac at: its Wi-Fi IP first, then its .local name.
+
+    The IP is the most reliable; gethostname() on a Mac can be a router-assigned
+    name (e.g. "macbook.lan") that the iPhone can't resolve, so the .local name
+    comes from scutil instead.
+    """
     out = []
-    name = socket.gethostname()
-    if name:  # the .local name survives the Mac getting a new IP, so list it first
-        out.append(name if name.endswith(".local") else f"{name}.local")
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("10.255.255.255", 1))  # no packet is sent; picks the LAN interface
             out.append(s.getsockname()[0])
     except OSError:
         pass
+    name = _bonjour_name()
+    if name:
+        out.append(name)
     return [a for a in out if not a.startswith("127.")]
 
 

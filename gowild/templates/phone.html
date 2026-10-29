@@ -23,6 +23,30 @@
   <p class="muted small">Your Mac does the checking, so it needs to be awake with GoWild Finder running. The first time, macOS may ask whether Python can accept incoming connections; choose Allow.</p>
   <form method="post" onsubmit="return confirm('Make a new code? Phones you paired before will need to scan again.')"><button class="ghost">Make a new pairing code</button></form>
 </div>
+<div class="card" id="alerts">
+  <h2>Alerts on your iPhone</h2>
+  <p style="margin-top:0">Get a notification when a check finds new GoWild or Early Booking dates.</p>
+  <ol style="margin:0 0 14px;padding-left:1.2em">
+    <li>Install the free <b>ntfy</b> app from the App Store and allow notifications.</li>
+    <li>In ntfy, tap <b>+</b> and subscribe to <code style="word-break:break-all">{{ topic }}</code> (server ntfy.sh).</li>
+    <li>Turn alerts on here and send a test.</li>
+  </ol>
+  <div class="actions">
+    <form method="post" action="{{ url_for('alerts') }}"><input type="hidden" name="action" value="{{ 'off' if alerts else 'on' }}"><button class="{{ 'ghost' if alerts else '' }}">{{ 'Turn alerts off' if alerts else 'Turn alerts on' }}</button></form>
+    <form method="post" action="{{ url_for('alerts') }}"><input type="hidden" name="action" value="test"><button class="ghost">Send a test</button></form>
+    {% if sent == 'ok' %}<span class="pill gw">Test sent</span>{% elif sent == 'fail' %}<span class="pill early">Couldn't reach ntfy.sh</span>{% endif %}
+  </div>
+  <p class="muted small" style="margin-bottom:0">{% if scheduled %}Automatic checks are on: every 3 hours while the Mac is awake, plus tomorrow's flights from noon.{% else %}Automatic checks are off. Run <code>bash scripts/install-mac.sh</code> again to turn them on.{% endif %} Alerts go through ntfy's public server and only say the route, date and number of flights. Anyone who knew the topic name could read them, so keep it to yourself.</p>
+</div>
+<div class="card">
+  <h2>If the iPhone shows a blank page</h2>
+  <ol style="margin:0;padding-left:1.2em">
+    <li>Check this page doesn't say "Phone access is off" above.</li>
+    {% if urls %}<li>On this Mac, open <a href="{{ urls[0].split('/pair')[0] }}" target="_blank">{{ urls[0].split('/pair')[0] }}</a>. If it says "Pair this phone first", the Mac side works. If it doesn't load, the Mac's firewall is blocking it: System Settings → Network → Firewall → Options, and set Python to "Allow incoming connections".</li>{% endif %}
+    <li>Try the other address listed above on the iPhone, typed into Safari.</li>
+    <li>Some guest or mesh Wi-Fi networks block devices from seeing each other. Put both on your main network.</li>
+  </ol>
+</div>
 <div class="card">
   <h2>Away from home</h2>
   <p class="muted" style="margin:0">This works on your home Wi-Fi. To use it anywhere, install Tailscale (free) on the Mac and the iPhone. It links them privately; then pair once more using the Mac's Tailscale address. Ask Claude to set this up when you want it.</p>
