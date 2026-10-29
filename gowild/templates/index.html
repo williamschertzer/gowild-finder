@@ -8,7 +8,7 @@
     <div class="item">
       <div class="main">
         <a href="{{ url_for('show_search', sid=s.id) }}"><b>{{ s.name }}</b></a>
-        <div class="meta">{{ s.origins }} → {{ s.destinations }} · {{ s.start_date }} to {{ s.end_date }}</div>
+        <div class="meta">{{ s.origins }} → {{ s.destinations }} · {{ s.start_date }} to {{ s.end_date }}{% if s.include_blackouts %} · incl. blackout dates{% endif %}</div>
         <div class="meta">{{ s.gowild_dates }} GoWild date{{ '' if s.gowild_dates == 1 else 's' }}{% if s.early_dates %} <span class="pill early">{{ s.early_dates }} early</span>{% endif %}{% if s.next %} · next {{ s.next }}{% endif %}</div>
       </div>
       <div class="side">
@@ -37,8 +37,9 @@
       <label><input type="checkbox" name="weekdays" value="{{ i }}" checked>{{ d }}</label>
       {% endfor %}
     </div>
+    <div class="days" style="margin-top:0"><label><input type="checkbox" name="include_blackouts" value="1" checked>Also check blackout dates</label></div>
     <div class="actions"><button class="big">Save search</button></div>
   </form>
-  <p class="muted small" style="margin-bottom:0">Use airport codes; separate several with commas. Blackout dates and dates after the pass ends are skipped.</p>
+  <p class="muted small" style="margin-bottom:0">Use airport codes; separate several with commas. Dates after the pass ends are skipped. Blackout dates are checked too. Frontier only sells GoWild on them during a Peak Day promotion ($79–$159 extra per flight), and none is running now, so untick the box to save lookups.</p>
 </div>
 {% endblock %}

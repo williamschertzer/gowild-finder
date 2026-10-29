@@ -110,8 +110,9 @@ in a window you drive yourself.) You book yourself by clicking **Book**, which o
 your regular browser.
 
 To stay low-impact it pauses 15 to 40 seconds between searches, caps each run
-at 40 lookups, and skips dates checked in the last 12 hours, blackout dates,
-and dates after the pass ends. If Frontier shows a bot check, the run stops.
+at 40 lookups, and skips dates checked in the last 12 hours, dates after the pass ends, and
+blackout dates if a search opts out (Frontier sells them only during Peak Day
+promotions). If Frontier shows a bot check, the run stops.
 Automated searching is a gray area under Frontier's site terms, so keep the
 volume modest.
 

@@ -32,3 +32,23 @@ def test_alerts_off_by_default_and_toggle(tmp_path, monkeypatch):
     assert "sent=ok" in r.headers["Location"] and sent[-1].full_url == f"https://ntfy.sh/{notify.topic(conn)}"
     assert "Turn alerts off" in client.get("/phone").get_data(as_text=True)
     assert client.post("/alerts", data={"action": "on"}, environ_base={"REMOTE_ADDR": "192.168.1.9"}).status_code == 403
+
+
+def test_closing_the_browser_window_stops_the_run(tmp_path, monkeypatch):
+    from gowild import __main__ as cli
+
+    calls = []
+
+    class FakeBrowser:
+        def __init__(self, **kw): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def lookup(self, o, d, day):
+            calls.append(day)
+            raise RuntimeError("Page.goto: Target page, context or browser has been closed")
+
+    monkeypatch.setattr(cli, "FrontierBrowser", FakeBrowser)
+    conn = db.connect(str(tmp_path / "c.db"))
+    tasks = [("DEN", "LAS", f"2026-11-0{i}") for i in range(1, 6)]
+    assert cli.run_lookups(conn, tasks, False, 40) == 3
+    assert calls == ["2026-11-01"]

@@ -92,3 +92,22 @@ def test_web_pages_render(tmp_path):
     app.post("/value", data={"action": "settings", "pass_price": "199", "tier": "gold"})
     v = app.get("/value").get_data(as_text=True)
     assert "$115" in v and "UpFront Plus upgrade" in v
+
+
+def test_blackout_dates_are_opt_in(tmp_path):
+    conn = db.connect(str(tmp_path / "b.db"))
+    s = {"origins": "DEN", "destinations": "LAS", "start_date": "2026-11-23", "end_date": "2026-11-26", "weekdays": "0123456"}
+    days = lambda s: {t[2] for t in planner.plan(conn, [s], today=date(2026, 11, 1))}
+    assert days(s) == {"2026-11-23", "2026-11-26"}
+    assert days(dict(s, include_blackouts=1)) == {"2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26"}
+
+
+def test_old_database_gets_blackout_column(tmp_path):
+    import sqlite3
+    path = str(tmp_path / "old.db")
+    old = sqlite3.connect(path)
+    old.execute("CREATE TABLE searches (id INTEGER PRIMARY KEY, name TEXT NOT NULL, origins TEXT NOT NULL, destinations TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL, weekdays TEXT NOT NULL DEFAULT '0123456', active INTEGER NOT NULL DEFAULT 1)")
+    old.execute("INSERT INTO searches (name, origins, destinations, start_date, end_date) VALUES ('a','DEN','LAS','2026-11-01','2026-11-05')")
+    old.commit(); old.close()
+    row = db.connect(path).execute("SELECT include_blackouts FROM searches").fetchone()
+    assert row["include_blackouts"] == 1

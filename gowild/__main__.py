@@ -35,8 +35,13 @@ def run_lookups(conn, tasks, headless, limit, profile="browser-profile", offscre
                     notify.send(conn, *notify.new_finds_message(finds))
                 return 2
             except Exception as e:  # keep going on one bad page
+                if "has been closed" in str(e):  # someone closed the window: treat it as Stop
+                    print("The browser window was closed, so the check stopped. What it found so far is saved.", flush=True)
+                    if finds:
+                        notify.send(conn, *notify.new_finds_message(finds))
+                    return 3
                 status, flights = "error", []
-                print(f"  error: {e}")
+                print(f"  error: {e}", flush=True)
             if db.save_check(conn, o, d, day, status, flights):
                 finds.append((o, d, day, len(flights), rules.is_early_booking(date.fromisoformat(day), o, d)))
             found += len(flights)

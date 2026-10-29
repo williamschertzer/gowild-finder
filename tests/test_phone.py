@@ -58,3 +58,11 @@ def test_stop_and_delete_end_a_running_check(tmp_path, monkeypatch):
     web._jobs["tomorrow"] = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     client.post("/stop/tomorrow")
     assert web._jobs["tomorrow"].poll() is not None
+
+
+def test_tailscale_qr_shows_when_connected(tmp_path, monkeypatch):
+    monkeypatch.setattr(phone, "tailscale_address", lambda: "100.64.1.2")
+    page = create_app(str(tmp_path / "t.db")).test_client().get("/phone").get_data(as_text=True)
+    assert "http://100.64.1.2:5050/pair?key=" in page and "Tailscale is connected" in page
+    monkeypatch.setattr(phone, "tailscale_address", lambda: None)
+    assert "Install <b>Tailscale</b>" in create_app(str(tmp_path / "t.db")).test_client().get("/phone").get_data(as_text=True)
