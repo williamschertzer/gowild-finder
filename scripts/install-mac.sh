@@ -40,7 +40,28 @@ open http://127.0.0.1:5050/
 LAUNCH
 chmod +x "$APP/Contents/MacOS/launch"
 
+echo "Scheduling automatic checks every 3 hours..."
+AGENT="$HOME/Library/LaunchAgents/local.gowild-finder.auto.plist"
+mkdir -p "$HOME/Library/LaunchAgents"
+launchctl unload "$AGENT" 2>/dev/null || true
+cat > "$AGENT" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>local.gowild-finder.auto</string>
+  <key>ProgramArguments</key><array>
+    <string>$REPO/.venv/bin/python</string><string>-u</string><string>-m</string><string>gowild</string><string>auto</string>
+  </array>
+  <key>WorkingDirectory</key><string>$REPO</string>
+  <key>StartInterval</key><integer>10800</integer>
+  <key>StandardOutPath</key><string>$REPO/last-auto.log</string>
+  <key>StandardErrorPath</key><string>$REPO/last-auto.log</string>
+</dict></plist>
+PLIST
+launchctl load "$AGENT"
+
 echo
 echo "Done. Open Finder > Applications (your home folder's) > GoWild Finder,"
 echo "or press Cmd+Space and type GoWild. Drag it to the Dock to keep it handy."
 echo "To stop the app's server: pkill -f 'gowild serve'"
+echo "To turn off automatic checks: launchctl unload \"$AGENT\" && rm \"$AGENT\""

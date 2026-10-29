@@ -161,9 +161,9 @@ def parse_results(page_html: str, extra_blobs=()) -> tuple[str, list[dict]]:
 class FrontierBrowser:
     """A logged-out Chromium with its own profile, separate from your normal browser."""
 
-    def __init__(self, headless: bool = False, min_delay: float = 15, max_delay: float = 40, profile: str = "browser-profile"):
+    def __init__(self, headless: bool = False, min_delay: float = 15, max_delay: float = 40, profile: str = "browser-profile", offscreen: bool = False):
         self.headless, self.min_delay, self.max_delay = headless, min_delay, max_delay
-        self.profile = profile
+        self.profile, self.offscreen = profile, offscreen
         self._last = 0.0
 
     def __enter__(self):
@@ -172,7 +172,9 @@ class FrontierBrowser:
         self._lock = ProfileLock(self.profile).__enter__()
         self._pw = sync_playwright().start()
         self.ctx = self._pw.chromium.launch_persistent_context(
-            profile_path(self.profile), headless=self.headless, viewport={"width": 1280, "height": 900}, locale="en-US"
+            profile_path(self.profile), headless=self.headless, viewport={"width": 1280, "height": 900}, locale="en-US",
+            # scheduled runs: a real (headed) browser, which Frontier blocks less, parked off screen
+            args=["--window-position=-3000,-3000"] if self.offscreen else [],
         )
         self.page = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
         return self

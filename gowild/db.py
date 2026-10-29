@@ -58,12 +58,18 @@ def split_codes(s: str) -> list[str]:
     return [c.strip().upper() for c in s.replace(" ", ",").split(",") if c.strip()]
 
 
-def save_check(conn, origin, dest, d, status, flights):
+def save_check(conn, origin, dest, d, status, flights) -> bool:
+    """Store a lookup. Returns True if this date newly has GoWild flights."""
+    prev = conn.execute("SELECT status, flights FROM checks WHERE origin=? AND dest=? AND date=?", (origin, dest, d)).fetchone()
+    had = bool(prev and json.loads(prev["flights"]))
+    if status in ("blocked", "error") and prev:
+        return False  # a failed lookup shouldn't wipe what an earlier one found
     conn.execute(
         "INSERT OR REPLACE INTO checks VALUES (?,?,?,?,?,?)",
         (origin, dest, d, datetime.now().isoformat(timespec="seconds"), status, json.dumps(flights)),
     )
     conn.commit()
+    return bool(flights) and not had
 
 
 def get_checks(conn, origins, dests, start, end):

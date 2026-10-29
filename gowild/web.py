@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 
 from flask import Flask, abort, make_response, redirect, render_template, request, url_for
 
-from . import db, phone, rules, seats, value
+from . import db, notify, phone, rules, seats, value
 from .db import split_codes
 from .frontier import search_url
 
@@ -152,7 +152,25 @@ def create_app(db_path=None, phone_access=False):
         hosts = phone.lan_addresses()
         urls = [phone.pair_url(h, k) for h in hosts]
         listening = app.config.get("PHONE_ACCESS", False)
-        return render_template("phone.html", urls=urls, qr=phone.qr_svg(urls[0]) if urls else None, listening=listening)
+        t = notify.topic(c)
+        return render_template(
+            "phone.html", urls=urls, qr=phone.qr_svg(urls[0]) if urls else None, listening=listening,
+            alerts=notify.enabled(c), topic=t, topic_url=f"{notify.SERVER}/{t}",
+            scheduled=os.path.exists(os.path.expanduser("~/Library/LaunchAgents/local.gowild-finder.auto.plist")),
+            sent=request.args.get("sent"),
+        )
+
+    @app.post("/alerts")
+    def alerts():
+        if not is_local():
+            abort(403)
+        c = conn()
+        action = request.form.get("action")
+        if action in ("on", "off"):
+            db.set_setting(c, "alerts", action)
+            return redirect(url_for("phone") + "#alerts")
+        ok = notify.send(c, "GoWild Finder test", "Alerts are working. You'll get one when new GoWild dates show up.", force=True)
+        return redirect(url_for("phone", sent="ok" if ok else "fail") + "#alerts")
 
     @app.context_processor
     def globals_():
