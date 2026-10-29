@@ -33,6 +33,6 @@ def test_value_page_shows_seat_prices(tmp_path):
     client.post("/value", data={"date": d, "origin": "DEN", "dest": "LAS", "depart_time": "07:05", "cash_fare": "129", "paid": "14"})
     db.save_seats(db.connect(path), 1, seats.parse_seats([SEATMAP]))
     page = client.get("/value").get_data(as_text=True)
-    assert "UpFront Plus: 1 open, $89" in page
-    assert "Premium: 2 open, $45–$52" in page
+    assert "UpFront Plus 1 · $89" in page
+    assert "Premium 2 · $45–52" in page
     assert "Seat prices" in page

@@ -2,11 +2,12 @@
 {% block title %}{{ s.name }}, GoWild Finder{% endblock %}
 {% block body %}
 <h1>{{ s.name }}</h1>
-<p class="muted">{{ s.origins }} → {{ s.destinations }}, {{ s.start_date }} to {{ s.end_date }}</p>
-<form method="post" action="{{ url_for('run', kind='check') }}"><input type="hidden" name="search" value="{{ s.name }}"><button>Check now</button></form>
-<div class="card" style="margin-top:16px">
+<p class="muted" style="margin-top:-8px">{{ s.origins }} → {{ s.destinations }} · {{ s.start_date }} to {{ s.end_date }}</p>
+<div class="actions" style="margin-bottom:20px"><form method="post" action="{{ url_for('run', kind='check') }}"><input type="hidden" name="search" value="{{ s.name }}"><button class="big" {{ 'disabled' if job.running }}>{{ 'Checking…' if job.running else 'Check now' }}</button></form></div>
+{% include "_job.html" %}
+<div class="card">
   <div class="legend">
-    <span><i style="background:var(--gold-bg)"></i>Early Booking GoWild</span>
+    <span><i style="background:var(--gold-bg)"></i>Early Booking</span>
     <span><i style="background:var(--green-bg)"></i>GoWild</span>
     <span><i style="background:var(--gray-bg)"></i>Blackout</span>
     <span><i style="background:var(--red-bg)"></i>Couldn't check</span>
@@ -14,35 +15,25 @@
   </div>
   <div class="months">
   {% for m in months %}
-    <table class="cal"><caption style="font-weight:600;padding-bottom:4px">{{ m.title }}</caption>
+    <table class="cal"><caption>{{ m.title }}</caption>
       <tr>{% for d in 'SMTWTFS' %}<th>{{ d }}</th>{% endfor %}</tr>
       {% for w in m.weeks %}<tr>
-        {% for d in w %}{% if d %}<td class="d-{{ d.state }}">{% if d.n %}<a href="#d{{ d.iso }}" style="text-decoration:none;color:inherit"><span title="{{ d.n }} GoWild flight(s)">{{ d.day }}</span></a>{% else %}<span>{{ d.day }}</span>{% endif %}</td>{% else %}<td></td>{% endif %}{% endfor %}
+        {% for d in w %}{% if d %}<td class="d-{{ d.state }}">{% if d.n %}<a href="#d{{ d.iso }}"><span title="{{ d.n }} GoWild flight(s)">{{ d.day }}</span></a>{% else %}<span>{{ d.day }}</span>{% endif %}</td>{% else %}<td></td>{% endif %}{% endfor %}
       </tr>{% endfor %}
     </table>
   {% endfor %}
   </div>
 </div>
 
-<div class="card scroll">
+<div class="card">
   <h2>GoWild flights</h2>
   {% if not hits %}<p class="muted">None found yet. Run a check, or widen the dates.</p>{% endif %}
-  <table>
   {% for c in hits %}
-    <tr id="d{{ c.date }}"><th colspan="6" style="color:var(--ink);padding-top:14px">{{ c.date }} · {{ c.origin }} → {{ c.dest }} {% if c.early %}<span class="pill early">Early Booking</span>{% else %}<span class="pill gw">GoWild</span>{% endif %} <span class="muted" style="font-weight:400">checked {{ c.checked_at[:16].replace('T',' ') }}</span></th></tr>
-    {% for f in c.flights %}
-    <tr>
-      <td>{{ f.dep_txt }} → {{ f.arr_txt }}</td>
-      <td>{{ f.flight_numbers|join(', ') }}{% if f.stops %} · {{ f.stops }}{% endif %}</td>
-      <td>GoWild {{ '$%.2f'|format(f.gowild_price) if f.gowild_price is not none else '' }}{% if f.gowild_seats %} · {{ f.gowild_seats }} seats{% endif %}</td>
-      <td class="muted">{{ 'Cash $%.0f'|format(f.standard_fare) if f.standard_fare else '' }}</td>
-      <td><a class="btn" href="{{ c.url }}" target="_blank" rel="noopener">Book</a></td>
-      <td><a href="{{ url_for('pass_value', date=c.date, origin=c.origin, dest=c.dest, depart_time=(f.depart or '')[11:16], flight_no=f.flight_numbers|join(','), cash_fare=f.standard_fare or '', paid=f.gowild_price or '') }}#log">Log trip</a></td>
-    </tr>
-    {% endfor %}
+    <div class="group-head" id="d{{ c.date }}">{{ c.date }} · {{ c.origin }} → {{ c.dest }} {% if c.early %}<span class="pill early">Early Booking</span>{% else %}<span class="pill gw">GoWild</span>{% endif %} <span class="muted small" style="font-weight:400">checked {{ c.checked_at[:16].replace('T',' ') }}</span></div>
+    <div class="list">
+    {% for f in c.flights %}{% with book_url=c.url, origin=c.origin, dest=c.dest, date=c.date %}{% include "_flight.html" %}{% endwith %}{% endfor %}
+    </div>
   {% endfor %}
-  </table>
-  <p class="muted">Book opens Frontier's search for that date. Log in there as yourself, pick the flight and choose the GoWild fare. Early Booking prices include Frontier's early booking charge.</p>
+  <p class="muted small">Book opens Frontier for that date. Log in, pick the flight and choose the GoWild fare. Early Booking prices include Frontier's early booking charge.</p>
 </div>
-{% include "_job.html" %}
 {% endblock %}

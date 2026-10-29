@@ -30,6 +30,20 @@ Applications folder in your home folder. Double-click it (or Cmd+Space, "GoWild"
 opens in your browser. Drag it to the Dock to keep it handy. To update later:
 `git pull`, then run the install script again.
 
+## On your iPhone
+
+The Mac does the checking; your iPhone shows the app over home Wi-Fi.
+
+1. Open GoWild Finder on the Mac with the app icon (it turns phone access on;
+   by hand it's `python -m gowild serve --phone`).
+2. Go to the **iPhone** tab and scan the QR code with the iPhone's camera.
+3. In Safari, Share → **Add to Home Screen**.
+
+Only the Mac itself and phones that scanned the code can open the app. **Make a
+new pairing code** on the iPhone tab signs every phone out. The Mac has to be
+awake with the app running. If macOS asks whether Python may accept incoming
+connections, choose Allow.
+
 ## Setup by hand (any computer)
 
 Needs Python 3.10 or newer.

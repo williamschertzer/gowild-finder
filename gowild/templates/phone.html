@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}iPhone, GoWild Finder{% endblock %}
+{% block body %}
+<style>.qr svg { width:100%; height:auto; display:block }</style>
+<h1>Use GoWild Finder on your iPhone</h1>
+{% if not listening %}
+<div class="card" style="border-color:var(--gold)">
+  <h2>Phone access is off</h2>
+  <p style="margin-top:0">The app is only answering this Mac right now. Open it with the <b>GoWild Finder</b> app icon (it turns phone access on), or start it with <code>python -m gowild serve --phone</code>, then come back here.</p>
+</div>
+{% endif %}
+<div class="card">
+  <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">
+    {% if qr %}<div class="qr" style="width:300px;max-width:100%;background:#fff;padding:12px;border-radius:14px">{{ qr|safe }}</div>{% endif %}
+    <ol style="flex:1 1 320px;margin:0;padding-left:1.2em">
+      <li>Make sure your iPhone is on the same Wi-Fi as this Mac.</li>
+      <li>Open the Camera and point it at the code. Tap the link that appears.</li>
+      <li>In Safari, tap Share, then <b>Add to Home Screen</b>. You'll get a GoWild icon that opens like an app.</li>
+    </ol>
+  </div>
+  {% if urls %}<p class="muted small">Or type this into Safari: {% for u in urls %}<br><code style="word-break:break-all">{{ u }}</code>{% endfor %}</p>{% endif %}
+  <p class="muted small">The Home Screen icon remembers the address it was added from. If it stops loading, scan the code again.</p>
+  <p class="muted small">Your Mac does the checking, so it needs to be awake with GoWild Finder running. The first time, macOS may ask whether Python can accept incoming connections; choose Allow.</p>
+  <form method="post" onsubmit="return confirm('Make a new code? Phones you paired before will need to scan again.')"><button class="ghost">Make a new pairing code</button></form>
+</div>
+<div class="card">
+  <h2>Away from home</h2>
+  <p class="muted" style="margin:0">This works on your home Wi-Fi. To use it anywhere, install Tailscale (free) on the Mac and the iPhone. It links them privately; then pair once more using the Mac's Tailscale address. Ask Claude to set this up when you want it.</p>
+</div>
+{% endblock %}
