@@ -33,20 +33,33 @@
   </form>
 </div>
 
-<div class="card scroll">
-  <h2>Trips</h2>
+<div class="card scroll" id="trips">
+  <div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">Trips</h2>
+    <form method="post" action="{{ url_for('import_trips') }}"><button {{ 'disabled' if job.running }} title="Opens a browser: log in, open My Trips and Past Trips, then close the window">Import from my Frontier account</button></form></div>
   {% if not trips %}<p class="muted">No trips logged yet.</p>{% else %}
   <table>
-    <tr><th>Date</th><th>Route</th><th>Flight</th><th>Cash</th><th>Paid</th><th>Saved</th><th>Check-in / upgrade</th><th></th></tr>
+    <tr><th>Date</th><th>Route</th><th>Flight</th><th>Cash</th><th>Paid</th><th>Saved</th><th>Check-in / upgrade</th><th>Seats</th><th></th></tr>
     {% for t in trips %}
     <tr>
       <td>{{ t.date }} {{ t.depart_time or '' }}</td><td>{{ t.origin }} → {{ t.dest }}</td><td>{{ t.flight_no or '' }}</td>
-      <td>${{ '%.0f'|format(t.cash_fare) }}</td><td>${{ '%.2f'|format(t.paid) }}</td><td><b>${{ '%.0f'|format(t.saved) }}</b></td>
+      <td><input form="u{{ t.id }}" name="cash_fare" type="number" step="0.01" value="{{ '%.2f'|format(t.cash_fare) }}" style="width:115px{{ ';border-color:var(--gold)' if not t.cash_fare }}" title="What this flight cost in cash" onchange="this.form.submit()"></td>
+      <td><input form="u{{ t.id }}" name="paid" type="number" step="0.01" value="{{ '%.2f'|format(t.paid) }}" style="width:100px" onchange="this.form.submit()"></td><td><b>${{ '%.0f'|format(t.saved) }}</b></td>
       <td class="muted">{% if t.upcoming %}Check-in {{ t.checkin.strftime('%b %-d %-I:%M %p') }}{% if t.upgrade %}<br>UpFront Plus upgrade from {{ t.upgrade.strftime('%b %-d %-I:%M %p') }}{% endif %}{% endif %}</td>
-      <td><form method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ t.id }}"><button class="ghost">✕</button></form></td>
+      <td>{% if t.upcoming is not defined or t.upcoming %}<form method="post" action="{{ url_for('trip_seats', tid=t.id) }}"><button class="ghost" title="Opens a browser: log in, open this trip's seat map, then close the window">Seat prices</button></form>{% endif %}</td>
+      <td><form id="u{{ t.id }}" method="post"><input type="hidden" name="action" value="update"><input type="hidden" name="id" value="{{ t.id }}"></form><form method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ t.id }}"><button class="ghost">✕</button></form></td>
     </tr>
+    {% if t.seat_groups %}
+    <tr><td></td><td colspan="8">
+      <span class="muted">Open seats, checked {{ t.seats_at[:16].replace('T',' ') }}:</span>
+      {% for g in t.seat_groups %}
+        <span class="pill {{ 'early' if g.type in ('First Class','UpFront Plus') else 'gw' }}" title="{{ g.seats|join(', ') }}">{{ g.type }}: {{ g.open }} open{% if g.min is not none %}, ${{ '%.0f'|format(g.min) }}{% if g.max != g.min %}–${{ '%.0f'|format(g.max) }}{% endif %}{% endif %}</span>
+      {% endfor %}
+    </td></tr>
+    {% endif %}
     {% endfor %}
-  </table>{% endif %}
+  </table>
+  <p class="muted" style="margin-bottom:0">Seat prices opens a browser window. Log in to Frontier, open this trip's seat map, then close the window. The app only reads the prices; pick and pay for a seat yourself on Frontier.</p>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -61,4 +74,5 @@
   </form>
   <p class="muted" style="margin-bottom:0">Your tier sets when complimentary UpFront Plus upgrades open after check-in: Gold 4 hours, Platinum 12 hours, Diamond 24 hours before departure.</p>
 </div>
+{% with hint='Seat prices and Import open a browser window. Log in to Frontier there, open the pages it asks for, then close the window.' %}{% include "_job.html" %}{% endwith %}
 {% endblock %}

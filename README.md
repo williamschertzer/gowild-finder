@@ -12,8 +12,25 @@ your own computer.
   what's left to break even, and how many more trips that takes.
 - **Upgrade timing.** Set your Frontier Miles tier and each upcoming trip shows
   when check-in opens and when your UpFront Plus upgrade window starts.
+- **Paid seat prices.** For a trip you've booked, see which seats are open by
+  type (UpFront Plus, Premium, Preferred, Standard) and what each costs.
+- **Import your trips.** Pull past and upcoming flights from your Frontier
+  account into the trip log.
 
-## Setup (once)
+## Setup on a Mac (once)
+
+```bash
+git clone https://github.com/williamschertzer/gowild-finder
+cd gowild-finder
+bash scripts/install-mac.sh
+```
+
+This installs everything into the folder and adds **GoWild Finder** to the
+Applications folder in your home folder. Double-click it (or Cmd+Space, "GoWild") and it
+opens in your browser. Drag it to the Dock to keep it handy. To update later:
+`git pull`, then run the install script again.
+
+## Setup by hand (any computer)
 
 Needs Python 3.10 or newer.
 
@@ -41,6 +58,31 @@ python -m gowild check        # run up to 40 due lookups (--max to change)
 python -m gowild tomorrow     # check every saved route for tomorrow
 ```
 
+### Seat prices for a booked trip
+
+Log the trip on **Pass value & trips**, then press **Seat prices** on its row
+(or run `python -m gowild seats --trip ID`). A browser window opens. Log in to
+Frontier, go to My Trips, open that trip's seat map, then close the window. The
+app reads the seat prices the page loaded and shows them under the trip. It
+never selects or buys a seat. This window keeps its own login in
+`account-profile/`, separate from the logged-out profile used for searches.
+
+### Import trips from your Frontier account
+
+On **Pass value & trips**, press **Import from my Frontier account**. In the
+window that opens, log in, open My Trips (open each upcoming trip, and Past
+Trips), then close the window. New flights are added to the trip log. If the
+app saw that flight while checking, it fills in the cash fare. Otherwise the
+cash fare box is outlined so you can type it in. Frontier doesn't show what a
+flight would have cost in cash.
+
+### Running more than one thing at once
+
+A long check and **Check tomorrow** each use their own browser, so they can run
+side by side. Pressing a button again while its run is going does nothing.
+Seat prices and Import share the logged-in window, so do one at a time. If a
+run crashes and leaves its browser open, the next run closes it.
+
 To keep the calendar fresh, schedule `python -m gowild check` a couple of times
 a day (cron on macOS/Linux, Task Scheduler on Windows).
 
@@ -48,8 +90,9 @@ a day (cron on macOS/Linux, Task Scheduler on Windows).
 
 Frontier has no API for GoWild. The app opens Frontier's normal search page in
 a separate, **logged-out** browser profile and reads the flight list the page
-already contains. It never logs in to your account, books anything, or touches
-payment. You book yourself by clicking **Book**, which opens the same search in
+already contains. Searches never use your account, and the app never books
+anything or touches payment. (Seat prices are the one place you log in, by hand,
+in a window you drive yourself.) You book yourself by clicking **Book**, which opens the same search in
 your regular browser.
 
 To stay low-impact it pauses 15 to 40 seconds between searches, caps each run

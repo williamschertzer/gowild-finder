@@ -5,7 +5,7 @@
 <div class="card">
   <p style="margin-top:0">Regular GoWild seats for tomorrow open today. This checks every route in your saved searches for tomorrow and lists the GoWild flights by departure time.</p>
   <div class="row">
-    <form method="post" action="{{ url_for('run', kind='tomorrow') }}"><button class="btn big">Check tomorrow now</button></form>
+    <form method="post" action="{{ url_for('run', kind='tomorrow') }}"><button class="btn big" {{ 'disabled' if job.running }}>{{ 'Checking…' if job.running else 'Check tomorrow now' }}</button></form>
     <span class="muted">{% if checked %}Last checked {{ checked[:16].replace('T',' ') }}{% else %}Not checked yet{% endif %}</span>
   </div>
   <p class="muted" style="margin-bottom:0">Fastest booking: stay logged in to flyfrontier.com in your normal browser with your payment card saved, then click Book below.</p>
@@ -32,5 +32,5 @@
   {% endif %}
   {% if empty_routes %}<p class="muted">Checked with no GoWild seats: {% for r in empty_routes %}{{ r.origin }}→{{ r.dest }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
 </div>
-{% if log %}<div class="card"><h2>Last check</h2><pre>{{ log }}</pre></div>{% endif %}
+{% include "_job.html" %}
 {% endblock %}

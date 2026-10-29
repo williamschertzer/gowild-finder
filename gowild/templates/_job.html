@@ -1,0 +1,8 @@
+{% if job.running or job.log %}
+<div class="card">
+  <h2>{{ 'Running now' if job.running else 'Last run' }}{% if job.running %} <span class="pill early">refreshing every 10s</span>{% endif %}</h2>
+  <pre>{{ job.log or 'Starting…' }}</pre>
+  {% if hint %}<p class="muted" style="margin-bottom:0">{{ hint }}</p>{% endif %}
+</div>
+{% if job.running %}<script>setTimeout(() => location.reload(), 10000)</script>{% endif %}
+{% endif %}

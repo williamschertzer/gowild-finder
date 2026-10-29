@@ -38,12 +38,17 @@ CREATE TABLE IF NOT EXISTS trips (
     confirmation TEXT,
     notes TEXT
 );
+CREATE TABLE IF NOT EXISTS seat_snapshots (
+    trip_id INTEGER NOT NULL,
+    captured_at TEXT NOT NULL,
+    seats TEXT NOT NULL             -- JSON list from seats.parse_seats
+);
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
 def connect(path: str | None = None) -> sqlite3.Connection:
-    conn = sqlite3.connect(path or DB_PATH)
+    conn = sqlite3.connect(path or DB_PATH, timeout=30)  # check + tomorrow runs can write at once
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     return conn
@@ -78,3 +83,44 @@ def get_setting(conn, key, default=None):
 def set_setting(conn, key, value):
     conn.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, str(value)))
     conn.commit()
+
+
+def save_seats(conn, trip_id, seats):
+    conn.execute(
+        "INSERT INTO seat_snapshots VALUES (?,?,?)",
+        (trip_id, datetime.now().isoformat(timespec="seconds"), json.dumps(seats)),
+    )
+    conn.commit()
+
+
+def latest_seats(conn, trip_id):
+    row = conn.execute(
+        "SELECT * FROM seat_snapshots WHERE trip_id=? ORDER BY captured_at DESC LIMIT 1", (trip_id,)
+    ).fetchone()
+    return (row["captured_at"], json.loads(row["seats"])) if row else (None, [])
+
+
+def import_trips(conn, trips) -> int:
+    """Add imported flights not already logged; fill fares from what checks saw."""
+    added = 0
+    for t in trips:
+        dup = conn.execute(
+            "SELECT 1 FROM trips WHERE date=? AND origin=? AND dest=? AND (flight_no=? OR flight_no IS NULL OR flight_no='')",
+            (t["date"], t["origin"], t["dest"], t["flight_no"]),
+        ).fetchone()
+        if dup:
+            continue
+        cash, paid = 0.0, t.get("paid")
+        row = conn.execute("SELECT flights FROM checks WHERE origin=? AND dest=? AND date=?", (t["origin"], t["dest"], t["date"])).fetchone()
+        for f in json.loads(row["flights"]) if row else []:
+            if t["flight_no"] in f.get("flight_numbers", []):
+                cash = f.get("standard_fare") or 0.0
+                paid = paid if paid is not None else f.get("gowild_price")
+        conn.execute(
+            "INSERT INTO trips (date, depart_time, origin, dest, flight_no, cash_fare, paid, confirmation, notes) VALUES (?,?,?,?,?,?,?,?,?)",
+            (t["date"], t["depart_time"], t["origin"], t["dest"], t["flight_no"], cash, paid or 0.0, t.get("confirmation"),
+             "imported" + ("" if cash else "; add cash fare")),
+        )
+        added += 1
+    conn.commit()
+    return added
