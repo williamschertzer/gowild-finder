@@ -1,5 +1,6 @@
 """Local web app: saved searches, GoWild calendar, tomorrow's flights, pass value."""
 import calendar
+import json
 import os
 import subprocess
 import sys
@@ -229,6 +230,19 @@ def create_app(db_path=None, phone_access=False):
             return redirect(url_for("show_search", sid=sid))
         return render_template("edit_search.html", s=dict(row))
 
+    @app.post("/searches/<int:sid>/copy")
+    def copy_search(sid):
+        c = conn()
+        row = c.execute("SELECT * FROM searches WHERE id=?", (sid,)).fetchone()
+        if not row:
+            abort(404)
+        cur = c.execute(
+            "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays, include_blackouts) VALUES (?,?,?,?,?,?,?)",
+            (f"{row['name']} (copy)", row["origins"], row["destinations"], row["start_date"], row["end_date"], row["weekdays"], row["include_blackouts"]),
+        )
+        c.commit()
+        return redirect(url_for("edit_search", sid=cur.lastrowid))
+
     @app.post("/searches/<int:sid>/delete")
     def delete_search(sid):
         c = conn()
@@ -252,7 +266,10 @@ def create_app(db_path=None, phone_access=False):
     @app.post("/run/<kind>")
     def run(kind):
         if kind == "tomorrow":
-            _spawn("tomorrow", "tomorrow")
+            ids = ",".join(sorted(request.form.getlist("ids"), key=int))
+            db.set_setting(conn(), "tomorrow_ids", ids)  # remembered for next time and for automatic checks
+            if ids:
+                _spawn("tomorrow", "tomorrow", "--ids", ids)
             return redirect(url_for("tomorrow"))
         args = ["check"] + (["--search", request.form["search"]] if request.form.get("search") else [])
         _spawn("check", *args)
@@ -283,14 +300,19 @@ def create_app(db_path=None, phone_access=False):
     def tomorrow():
         c = conn()
         t = (date.today() + timedelta(days=1)).isoformat()
-        rows = [_decorate(dict(r, flights=__import__("json").loads(r["flights"]))) for r in c.execute("SELECT * FROM checks WHERE date=?", (t,))]
+        searches = [dict(r) for r in c.execute("SELECT * FROM searches ORDER BY id DESC")]
+        picked = db.tomorrow_searches(c, searches)
+        routes = {(o, d) for s in picked for o in split_codes(s["origins"]) for d in split_codes(s["destinations"])}
+        rows = [_decorate(dict(r, flights=json.loads(r["flights"]))) for r in c.execute("SELECT * FROM checks WHERE date=?", (t,))
+                if (r["origin"], r["dest"]) in routes]
         flights = sorted(
             ({**f, "origin": r["origin"], "dest": r["dest"], "url": r["url"], "date": t} for r in rows for f in r["flights"]),
             key=lambda f: f["depart"] or "",
         )
         checked = max((r["checked_at"] for r in rows), default=None)
         empty_routes = [r for r in rows if not r["flights"]]
-        return render_template("tomorrow.html", day=date.fromisoformat(t), flights=flights, checked=checked, empty_routes=empty_routes, job=_job("tomorrow"))
+        return render_template("tomorrow.html", day=date.fromisoformat(t), flights=flights, checked=checked, empty_routes=empty_routes, job=_job("tomorrow"),
+                               searches=searches, picked={s["id"] for s in picked})
 
     @app.route("/value", methods=["GET", "POST"])
     def pass_value():

@@ -3,11 +3,21 @@
 {% block body %}
 <h1>Fly tomorrow<br><span class="muted" style="font-size:.7em;font-weight:500">{{ day.strftime('%A, %b %-d') }}</span></h1>
 <div class="card">
-  <div class="actions">
-    <form method="post" action="{{ url_for('run', kind='tomorrow') }}"><button class="big" {{ 'disabled' if job.running }}>{{ 'Checking…' if job.running else 'Check tomorrow now' }}</button></form>
-    <span class="muted small">{% if checked %}Last checked {{ checked[:16].replace('T',' ') }}{% else %}Not checked yet{% endif %}</span>
-  </div>
-  <p class="muted small" style="margin-bottom:0">Checks every route in your saved searches for tomorrow. Fastest booking: stay logged in to Frontier (app or website) with your card saved, then tap Book.</p>
+  {% if searches %}
+  <form method="post" action="{{ url_for('run', kind='tomorrow') }}">
+    <div class="muted small">Which searches to check for tomorrow:</div>
+    <div class="days">
+      {% for s in searches %}<label><input type="checkbox" name="ids" value="{{ s.id }}" {{ 'checked' if s.id in picked }}>{{ s.name }}</label>{% endfor %}
+    </div>
+    <div class="actions">
+      <button class="big" {{ 'disabled' if job.running }}>{{ 'Checking…' if job.running else 'Check tomorrow now' }}</button>
+      <span class="muted small">{% if checked %}Last checked {{ checked[:16].replace('T',' ') }}{% else %}Not checked yet{% endif %}</span>
+    </div>
+  </form>
+  <p class="muted small" style="margin-bottom:0">Your picks are remembered, and automatic checks use them too. Fastest booking: stay logged in to Frontier (app or website) with your card saved, then tap Book.</p>
+  {% else %}
+  <p style="margin:0">Save a search first, then pick it here. <a href="{{ url_for('index') }}">Saved searches</a></p>
+  {% endif %}
 </div>
 {% include "_job.html" %}
 <div class="card">

@@ -135,3 +135,12 @@ def import_trips(conn, trips) -> int:
         added += 1
     conn.commit()
     return added
+
+
+def tomorrow_searches(conn, searches):
+    """The saved searches picked on the Fly tomorrow page (all of them until you pick)."""
+    raw = get_setting(conn, "tomorrow_ids")
+    if raw is None:
+        return searches
+    ids = {int(i) for i in raw.split(",") if i}
+    return [s for s in searches if s["id"] in ids]

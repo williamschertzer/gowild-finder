@@ -133,3 +133,35 @@ def test_edit_search_and_blackout_calendar_states(tmp_path):
     days = {d["iso"]: d["state"] for m in month_grid(date(2026, 11, 20), date(2026, 11, 30), by_date) for w in m["weeks"] for d in w if d}
     if date.today() < date(2026, 11, 24):
         assert days["2026-11-24"] == "blackout-gw" and days["2026-11-25"] == "blackout" and days["2026-11-28"] == "blackout"
+
+
+def test_copy_search_and_pick_searches_for_tomorrow(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from gowild import web
+
+    path = str(tmp_path / "t.db")
+    client = create_app(path).test_client()
+    base = {"origins": "DEN", "start_date": "2026-11-01", "end_date": "2026-11-30", "weekdays": ["4"], "include_blackouts": "1"}
+    client.post("/searches", data={**base, "name": "Vegas", "destinations": "LAS"})
+    client.post("/searches", data={**base, "name": "Orlando", "destinations": "MCO"})
+
+    r = client.post("/searches/1/copy")
+    assert r.headers["Location"].endswith("/searches/3/edit")
+    conn = db.connect(path)
+    copy = conn.execute("SELECT * FROM searches WHERE id=3").fetchone()
+    assert (copy["name"], copy["destinations"], copy["weekdays"]) == ("Vegas (copy)", "LAS", "4")
+
+    spawned = []
+    monkeypatch.setattr(web, "_spawn", lambda kind, *args: spawned.append(args) or True)
+    page = client.get("/tomorrow").get_data(as_text=True)
+    assert page.count('name="ids"') == 3 and page.count("checked>") == 3  # all picked until you choose
+    client.post("/run/tomorrow", data={"ids": ["2"]})
+    assert spawned[-1] == ("tomorrow", "--ids", "2")
+    assert [s["name"] for s in db.tomorrow_searches(conn, [dict(r) for r in conn.execute("SELECT * FROM searches")])] == ["Orlando"]
+
+    t = (date.today() + timedelta(days=1)).isoformat()
+    flight = [{"depart": t + "T07:00", "arrive": t + "T09:00", "flight_numbers": ["1"], "gowild_price": 15}]
+    db.save_check(conn, "DEN", "LAS", t, "ok", flight)
+    db.save_check(conn, "DEN", "MCO", t, "ok", flight)
+    page = client.get("/tomorrow").get_data(as_text=True)
+    assert "DEN → MCO" in page and "DEN → LAS" not in page  # only picked searches' routes
