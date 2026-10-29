@@ -114,7 +114,7 @@ def main(argv=None):
     if a.command == "import":
         return run_import(conn)
 
-    searches = [dict(r) for r in conn.execute("SELECT * FROM searches WHERE active=1")]
+    searches = [s for s in db.ordered_searches(conn) if s["active"]]
     if a.search:
         searches = [s for s in searches if s["name"].lower() == a.search.lower()]
     all_searches = searches

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS searches (
     end_date TEXT NOT NULL,
     weekdays TEXT NOT NULL DEFAULT '0123456', -- Mon=0 .. Sun=6
     include_blackouts INTEGER NOT NULL DEFAULT 1,
+    position INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS checks (
@@ -55,6 +56,9 @@ def connect(path: str | None = None) -> sqlite3.Connection:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(searches)")}
     if "include_blackouts" not in cols:  # added after the first release
         conn.execute("ALTER TABLE searches ADD COLUMN include_blackouts INTEGER NOT NULL DEFAULT 1")
+        conn.commit()
+    if "position" not in cols:  # user-chosen order; 0 everywhere falls back to newest first
+        conn.execute("ALTER TABLE searches ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
         conn.commit()
     return conn
 
@@ -144,3 +148,28 @@ def tomorrow_searches(conn, searches):
         return searches
     ids = {int(i) for i in raw.split(",") if i}
     return [s for s in searches if s["id"] in ids]
+
+
+SEARCH_ORDER = "ORDER BY position, id DESC"
+
+
+def ordered_searches(conn):
+    return [dict(r) for r in conn.execute(f"SELECT * FROM searches {SEARCH_ORDER}")]
+
+
+def top_position(conn) -> int:
+    """Position for a new search so it lands at the top of the list."""
+    return (conn.execute("SELECT MIN(position) FROM searches").fetchone()[0] or 0) - 1
+
+
+def move_search(conn, sid: int, step: int):
+    """Move a search up (step=-1) or down (step=1) one place."""
+    ids = [s["id"] for s in ordered_searches(conn)]
+    if sid not in ids:
+        return
+    i = ids.index(sid)
+    j = i + step
+    if 0 <= j < len(ids):
+        ids[i], ids[j] = ids[j], ids[i]
+    conn.executemany("UPDATE searches SET position=? WHERE id=?", list(enumerate(ids)))
+    conn.commit()
