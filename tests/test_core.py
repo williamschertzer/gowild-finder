@@ -167,6 +167,29 @@ def test_copy_search_and_pick_searches_for_tomorrow(tmp_path, monkeypatch):
     assert "DEN → MCO" in page and "DEN → LAS" not in page  # only picked searches' routes
 
 
+def test_search_page_has_a_tab_per_airport_pair(tmp_path):
+    from datetime import timedelta
+    path = str(tmp_path / "r.db")
+    client = create_app(path).test_client()
+    d = (date.today() + timedelta(days=3)).isoformat()
+    end = (date.today() + timedelta(days=20)).isoformat()
+    client.post("/searches", data={"name": "Multi", "origins": "DEN, DCA", "destinations": "LAS", "start_date": date.today().isoformat(), "end_date": end})
+    conn = db.connect(path)
+    f = [{"depart": d + "T07:00", "arrive": d + "T09:00", "flight_numbers": ["11"], "gowild_price": 15}]
+    db.save_check(conn, "DEN", "LAS", d, "ok", f)
+    db.save_check(conn, "DCA", "LAS", d, "no_flights", [])
+    page = client.get("/searches/1").get_data(as_text=True)
+    assert "DEN → LAS <span class=\"count\">1</span>" in page and "DCA → LAS <span class=\"count\">0</span>" in page
+    assert "flight 11" in page or "11" in page
+    dca = client.get("/searches/1?route=DCA-LAS").get_data(as_text=True)
+    assert "None found yet" in dca
+    den = client.get("/searches/1?route=DEN-LAS").get_data(as_text=True)
+    assert "None found yet" not in den
+    client.post("/searches", data={"name": "Single", "origins": "DEN", "destinations": "LAS", "start_date": date.today().isoformat(), "end_date": end})
+    assert 'class="tabs"' not in client.get("/searches/2").get_data(as_text=True)
+
+
+
 def test_reorder_saved_searches(tmp_path):
     path = str(tmp_path / "o.db")
     client = create_app(path).test_client()
