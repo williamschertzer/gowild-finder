@@ -10,7 +10,7 @@ from flask import Flask, abort, make_response, redirect, render_template, reques
 
 from . import db, notify, phone, rules, seats, value
 from .db import split_codes
-from .frontier import search_url
+from .frontier import DEFAULT_TABS, MAX_TABS, search_url
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -203,7 +203,13 @@ def create_app(db_path=None, phone_access=False):
             s["next"] = min((d for d in hit_dates if d > date.today().isoformat()), default=None)
             rows.append(s)
         default_end = min(date.today() + timedelta(days=60), rules.PASS_END)
-        return render_template("index.html", searches=rows, default_end=default_end, job=_job("check"))
+        tabs = int(db.get_setting(c, "tabs", DEFAULT_TABS))
+        return render_template("index.html", searches=rows, default_end=default_end, job=_job("check"), at_once=tabs, max_tabs=MAX_TABS)
+
+    @app.post("/settings/tabs")
+    def set_tabs():
+        db.set_setting(conn(), "tabs", max(1, min(MAX_TABS, int(request.form.get("tabs", 1)))))
+        return redirect(url_for("index"))
 
     @app.post("/searches")
     def add_search():

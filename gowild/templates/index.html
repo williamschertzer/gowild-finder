@@ -23,7 +23,23 @@
   </div>
 </div>
 {% endif %}
-{% with hint='A check pauses 15 to 40 seconds between searches, so 40 dates take about 20 minutes. Its browser window runs on your Mac; leave it alone until it finishes.' %}{% include "_job.html" %}{% endwith %}
+{% if searches %}
+<div class="card">
+  <h2>Check all searches</h2>
+  <div class="actions">
+    <form method="post" action="{{ url_for('run', kind='check') }}"><button {{ 'disabled' if job.running }}>Check all now</button></form>
+    <form method="post" action="{{ url_for('set_tabs') }}" class="actions">
+      <label for="tabs" style="margin:0">Searches at once</label>
+      <select id="tabs" name="tabs" onchange="this.form.submit()" style="width:auto">
+        {% for n in range(1, max_tabs + 1) %}<option value="{{ n }}" {{ 'selected' if n == at_once }}>{{ n }}{{ ' (safest)' if n == 1 }}{{ ' (fastest)' if n == max_tabs }}</option>{% endfor %}
+      </select>
+      <noscript><button class="ghost">Save</button></noscript>
+    </form>
+  </div>
+  <p class="muted small" style="margin-bottom:0">One run covers every saved search, up to 40 dates. With more than 1, the browser loads that many dates side by side in separate tabs, then pauses 15 to 40 seconds, so 40 dates take about {{ (20 / at_once) | round | int }} minutes. Faster means more searches a minute from your home internet, which makes Frontier's bot check likelier. Searches are logged out, so your pass isn't at stake, but a bot check stops the run and may keep blocking for a while. If that happens, set this back to 1.</p>
+</div>
+{% endif %}
+{% with hint='Its browser window runs on your Mac; leave it alone until it finishes.' %}{% include "_job.html" %}{% endwith %}
 <div class="card">
   <h2>New search</h2>
   {% with s=None, action=url_for('add_search'), submit='Save search' %}{% include "_search_form.html" %}{% endwith %}

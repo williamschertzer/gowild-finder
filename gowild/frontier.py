@@ -22,6 +22,8 @@ from .browser import ProfileLock, profile_path
 
 SEARCH_URL = "https://booking.flyfrontier.com/Flight/InternalSelect?o1={o}&d1={d}&dd1={dd}&ADT=1&mon=true&promo="
 DEBUG_DIR = os.path.join(os.path.dirname(__file__), "..", "debug")
+MAX_TABS = 3  # searches loaded at once, each in its own tab; more makes a bot check likelier
+DEFAULT_TABS = 2
 
 
 class Blocked(Exception):
@@ -161,9 +163,11 @@ def parse_results(page_html: str, extra_blobs=()) -> tuple[str, list[dict]]:
 class FrontierBrowser:
     """A logged-out Chromium with its own profile, separate from your normal browser."""
 
-    def __init__(self, headless: bool = False, min_delay: float = 15, max_delay: float = 40, profile: str = "browser-profile", offscreen: bool = False):
+    def __init__(self, headless: bool = False, min_delay: float = 15, max_delay: float = 40, profile: str = "browser-profile",
+                 offscreen: bool = False, tabs: int = 1):
         self.headless, self.min_delay, self.max_delay = headless, min_delay, max_delay
         self.profile, self.offscreen = profile, offscreen
+        self.tabs = max(1, min(MAX_TABS, tabs))
         self._last = 0.0
 
     def __enter__(self):
@@ -175,8 +179,11 @@ class FrontierBrowser:
             profile_path(self.profile), headless=self.headless, viewport={"width": 1280, "height": 900}, locale="en-US",
             # scheduled runs: a real (headed) browser, which Frontier blocks less, parked off screen
             args=["--window-position=-3000,-3000"] if self.offscreen else [],
+            executable_path=os.environ.get("GOWILD_CHROMIUM"),  # optional: a Chromium other than Playwright's
         )
-        self.page = self.ctx.pages[0] if self.ctx.pages else self.ctx.new_page()
+        self.pages = list(self.ctx.pages[:1]) or [self.ctx.new_page()]
+        while len(self.pages) < self.tabs:
+            self.pages.append(self.ctx.new_page())
         return self
 
     def __exit__(self, *exc):
@@ -193,34 +200,69 @@ class FrontierBrowser:
         self._last = time.time()
 
     def lookup(self, origin: str, dest: str, d: str) -> tuple[str, list[dict]]:
-        self._pace()
-        captured = []
+        (_, status, flights, err), = self.lookup_many([(origin, dest, d)])
+        if err:
+            raise err
+        return status, flights
 
-        def on_response(resp):
-            if "json" in (resp.headers.get("content-type") or ""):
+    def lookup_many(self, tasks: list) -> list:
+        """Load up to `tabs` searches side by side, one per tab, after one pause.
+
+        Returns (task, status, flights, error) for each. A bot check on any tab comes back as
+        status "blocked" with a Blocked error, so the caller can save the rest and stop.
+        """
+        self._pace()
+        batch = list(zip(self.pages, tasks))
+        captured = [[] for _ in batch]
+
+        def listener(bucket):
+            def on_response(resp):
+                if "json" in (resp.headers.get("content-type") or ""):
+                    try:
+                        body = resp.text()
+                        if _GW.search(body):
+                            bucket.append(json.loads(body))
+                    except Exception:
+                        pass
+            return on_response
+
+        handlers, started = [], []
+        for i, (page, (o, d, day)) in enumerate(batch):
+            h = listener(captured[i])
+            page.on("response", h)
+            handlers.append(h)
+            if i:
+                time.sleep(random.uniform(1, 3))  # don't fire the tabs in the same instant
+            try:
+                page.goto(search_url(o, d, day), wait_until="commit", timeout=60000)
+                started.append(None)
+            except Exception as e:
+                started.append(e)
+
+        results = []
+        for i, (page, task) in enumerate(batch):
+            o, d, day = task
+            try:
+                if started[i]:
+                    raise started[i]
+                page.wait_for_load_state("domcontentloaded", timeout=60000)
                 try:
-                    body = resp.text()
-                    if _GW.search(body):
-                        captured.append(json.loads(body))
+                    page.wait_for_load_state("networkidle", timeout=30000)
                 except Exception:
                     pass
-
-        self.page.on("response", on_response)
-        try:
-            self.page.goto(search_url(origin, dest, d), wait_until="domcontentloaded", timeout=60000)
-            try:
-                self.page.wait_for_load_state("networkidle", timeout=30000)
-            except Exception:
-                pass
-            page_html, title = self.page.content(), self.page.title()
-        finally:
-            self.page.remove_listener("response", on_response)
-
-        if looks_blocked(page_html, title):
-            raise Blocked(f"Frontier showed a bot check on {origin}-{dest} {d}")
-        status, flights = parse_results(page_html, captured)
-        if status == "unparsed":
-            os.makedirs(DEBUG_DIR, exist_ok=True)
-            with open(os.path.join(DEBUG_DIR, f"{origin}-{dest}-{d}.html"), "w") as fh:
-                fh.write(page_html)
-        return status, flights
+                page_html, title = page.content(), page.title()
+            except Exception as e:
+                results.append((task, "error", [], e))
+                continue
+            finally:
+                page.remove_listener("response", handlers[i])
+            if looks_blocked(page_html, title):
+                results.append((task, "blocked", [], Blocked(f"Frontier showed a bot check on {o}-{d} {day}")))
+                continue
+            status, flights = parse_results(page_html, captured[i])
+            if status == "unparsed":
+                os.makedirs(DEBUG_DIR, exist_ok=True)
+                with open(os.path.join(DEBUG_DIR, f"{o}-{d}-{day}.html"), "w") as fh:
+                    fh.write(page_html)
+            results.append((task, status, flights, None))
+        return results
