@@ -40,15 +40,16 @@ def test_closing_the_browser_window_stops_the_run(tmp_path, monkeypatch):
     calls = []
 
     class FakeBrowser:
+        tabs = 2
         def __init__(self, **kw): pass
         def __enter__(self): return self
         def __exit__(self, *a): pass
-        def lookup(self, o, d, day):
-            calls.append(day)
-            raise RuntimeError("Page.goto: Target page, context or browser has been closed")
+        def lookup_many(self, tasks):
+            calls.extend(day for _, _, day in tasks)
+            return [(t, "error", [], RuntimeError("Page.goto: Target page, context or browser has been closed")) for t in tasks]
 
     monkeypatch.setattr(cli, "FrontierBrowser", FakeBrowser)
     conn = db.connect(str(tmp_path / "c.db"))
     tasks = [("DEN", "LAS", f"2026-11-0{i}") for i in range(1, 6)]
     assert cli.run_lookups(conn, tasks, False, 40) == 3
-    assert calls == ["2026-11-01"]
+    assert calls == ["2026-11-01", "2026-11-02"]  # just the first round of tabs

@@ -187,3 +187,24 @@ def test_search_page_has_a_tab_per_airport_pair(tmp_path):
     assert "None found yet" not in den
     client.post("/searches", data={"name": "Single", "origins": "DEN", "destinations": "LAS", "start_date": date.today().isoformat(), "end_date": end})
     assert 'class="tabs"' not in client.get("/searches/2").get_data(as_text=True)
+
+
+
+def test_reorder_saved_searches(tmp_path):
+    path = str(tmp_path / "o.db")
+    client = create_app(path).test_client()
+    for name in ("A", "B", "C"):
+        client.post("/searches", data={"name": name, "origins": "DEN", "destinations": "LAS", "start_date": "2026-11-01", "end_date": "2026-11-05"})
+    conn = db.connect(path)
+    names = lambda: [s["name"] for s in db.ordered_searches(conn)]
+    assert names() == ["C", "B", "A"]  # newest on top
+    client.post("/searches/1/move/up")  # A up
+    assert names() == ["C", "A", "B"]
+    client.post("/searches/3/move/down")  # C down
+    assert names() == ["A", "C", "B"]
+    client.post("/searches/1/move/up")  # already first: no change
+    assert names() == ["A", "C", "B"]
+    client.post("/searches", data={"name": "D", "origins": "DEN", "destinations": "LAS", "start_date": "2026-11-01", "end_date": "2026-11-05"})
+    assert names()[0] == "D"
+    page = client.get("/").get_data(as_text=True)
+    assert page.index(">D<") < page.index(">A<") < page.index(">C<") < page.index(">B<")

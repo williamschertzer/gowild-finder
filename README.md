@@ -62,13 +62,19 @@ playwright install chromium
 python -m gowild serve        # open http://127.0.0.1:5050
 ```
 
-Add a search on the Saved searches page, then press **Check now**. A browser
-window opens and works through the dates; leave it alone until it finishes. You
+Add a search on the Saved searches page, then press **Check now** (one search)
+or **Check all now** (every saved search). A browser window opens and works
+through the dates; leave it alone until it finishes.
+
+**Searches at once** (1 to 3, default 2) sets how many dates load side by side,
+each in its own tab, before each pause. 2 is about twice as fast as 1. It also
+means more searches a minute from your internet connection, so Frontier's bot
+check is likelier. If a run stops on a bot check, set it back to 1. You
 can also run checks from the terminal:
 
 ```bash
 python -m gowild plan         # list the dates a check would look up
-python -m gowild check        # run up to 40 due lookups (--max to change)
+python -m gowild check        # run up to 40 due lookups (--max to change, --tabs 1-3)
 python -m gowild tomorrow     # check tomorrow for the searches picked in the app (--ids 1,3)
 ```
 
@@ -109,7 +115,8 @@ anything or touches payment. (Seat prices are the one place you log in, by hand,
 in a window you drive yourself.) You book yourself by clicking **Book**, which opens the same search in
 your regular browser.
 
-To stay low-impact it pauses 15 to 40 seconds between searches, caps each run
+To stay low-impact it pauses 15 to 40 seconds between rounds of searches (one
+round is 1 to 3 tabs), caps each run
 at 40 lookups, and skips dates checked in the last 12 hours, dates after the pass ends, and
 blackout dates if a search opts out (Frontier sells them only during Peak Day
 promotions). If Frontier shows a bot check, the run stops.
