@@ -5,17 +5,23 @@
 <div class="card">
   <div class="list">
   {% for s in searches %}
-    <div class="item">
+    <div class="item" id="s{{ s.id }}">
+      {% if searches|length > 1 %}
+      <div class="order">
+        <form method="post" action="{{ url_for('move_search', sid=s.id, direction='up') }}"><button class="ghost" title="Move up" aria-label="Move {{ s.name }} up" {{ 'disabled' if loop.first }}>▲</button></form>
+        <form method="post" action="{{ url_for('move_search', sid=s.id, direction='down') }}"><button class="ghost" title="Move down" aria-label="Move {{ s.name }} down" {{ 'disabled' if loop.last }}>▼</button></form>
+      </div>
+      {% endif %}
       <div class="main">
         <a href="{{ url_for('show_search', sid=s.id) }}"><b>{{ s.name }}</b></a>
         <div class="meta">{{ s.origins }} → {{ s.destinations }} · {{ s.start_date }} to {{ s.end_date }}{% if s.include_blackouts %} · incl. blackout dates{% endif %}</div>
         <div class="meta">{{ s.gowild_dates }} GoWild date{{ '' if s.gowild_dates == 1 else 's' }}{% if s.early_dates %} <span class="pill early">{{ s.early_dates }} early</span>{% endif %}{% if s.next %} · next {{ s.next }}{% endif %}</div>
       </div>
       <div class="side">
+        <form class="wide" method="post" action="{{ url_for('run', kind='check') }}"><input type="hidden" name="search" value="{{ s.name }}"><button {{ 'disabled' if job.running }}>Check now</button></form>
         <a class="btn ghost" href="{{ url_for('show_search', sid=s.id) }}">Calendar</a>
         <a class="btn ghost" href="{{ url_for('edit_search', sid=s.id) }}">Edit</a>
         <form method="post" action="{{ url_for('copy_search', sid=s.id) }}"><button class="ghost">Copy</button></form>
-        <form method="post" action="{{ url_for('run', kind='check') }}"><input type="hidden" name="search" value="{{ s.name }}"><button {{ 'disabled' if job.running }}>Check now</button></form>
         <form method="post" action="{{ url_for('delete_search', sid=s.id) }}" onsubmit="return confirm('Delete this search?')"><button class="ghost">Delete</button></form>
       </div>
     </div>

@@ -194,8 +194,7 @@ def create_app(db_path=None, phone_access=False):
     def index():
         c = conn()
         rows = []
-        for s in c.execute("SELECT * FROM searches ORDER BY id DESC"):
-            s = dict(s)
+        for s in db.ordered_searches(c):
             checks = [_decorate(x) for x in db.get_checks(c, split_codes(s["origins"]), split_codes(s["destinations"]), s["start_date"], s["end_date"])]
             hit_dates = {x["date"] for x in checks if x["flights"]}
             s["gowild_dates"] = len(hit_dates)
@@ -209,8 +208,8 @@ def create_app(db_path=None, phone_access=False):
     def add_search():
         c = conn()
         c.execute(
-            "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays, include_blackouts) VALUES (?,?,?,?,?,?,?)",
-            _search_fields(request.form),
+            "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays, include_blackouts, position) VALUES (?,?,?,?,?,?,?,?)",
+            (*_search_fields(request.form), db.top_position(c)),
         )
         c.commit()
         return redirect(url_for("index"))
@@ -237,11 +236,16 @@ def create_app(db_path=None, phone_access=False):
         if not row:
             abort(404)
         cur = c.execute(
-            "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays, include_blackouts) VALUES (?,?,?,?,?,?,?)",
-            (f"{row['name']} (copy)", row["origins"], row["destinations"], row["start_date"], row["end_date"], row["weekdays"], row["include_blackouts"]),
+            "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays, include_blackouts, position) VALUES (?,?,?,?,?,?,?,?)",
+            (f"{row['name']} (copy)", row["origins"], row["destinations"], row["start_date"], row["end_date"], row["weekdays"], row["include_blackouts"], db.top_position(c)),
         )
         c.commit()
         return redirect(url_for("edit_search", sid=cur.lastrowid))
+
+    @app.post("/searches/<int:sid>/move/<direction>")
+    def move_search(sid, direction):
+        db.move_search(conn(), sid, -1 if direction == "up" else 1)
+        return redirect(url_for("index") + f"#s{sid}")
 
     @app.post("/searches/<int:sid>/delete")
     def delete_search(sid):
@@ -300,7 +304,7 @@ def create_app(db_path=None, phone_access=False):
     def tomorrow():
         c = conn()
         t = (date.today() + timedelta(days=1)).isoformat()
-        searches = [dict(r) for r in c.execute("SELECT * FROM searches ORDER BY id DESC")]
+        searches = db.ordered_searches(c)
         picked = db.tomorrow_searches(c, searches)
         routes = {(o, d) for s in picked for o in split_codes(s["origins"]) for d in split_codes(s["destinations"])}
         rows = [_decorate(dict(r, flights=json.loads(r["flights"]))) for r in c.execute("SELECT * FROM checks WHERE date=?", (t,))
