@@ -18,7 +18,7 @@ from . import db, notify, planner, rules
 from .frontier import DEFAULT_TABS, MAX_TABS, Blocked, FrontierBrowser
 
 
-def run_lookups(conn, tasks, headless, limit, profile="browser-profile", offscreen=False, tabs=None):
+def run_lookups(conn, tasks, headless, limit, profile="browser-profile", show=False, tabs=None):
     tasks = tasks[:limit]
     tabs = max(1, min(MAX_TABS, tabs or int(db.get_setting(conn, "tabs", DEFAULT_TABS))))
     print(f"{len(tasks)} lookups to run" + (f", {tabs} at a time" if tabs > 1 and len(tasks) > 1 else ""), flush=True)
@@ -30,7 +30,7 @@ def run_lookups(conn, tasks, headless, limit, profile="browser-profile", offscre
         if finds and notify.send(conn, *notify.new_finds_message(finds)):
             print(f"Sent an alert for {len(finds)} new date(s).", flush=True)
 
-    with FrontierBrowser(headless=headless, profile=profile, offscreen=offscreen, tabs=tabs) as br:
+    with FrontierBrowser(headless=headless, profile=profile, show=show, tabs=tabs) as br:
         for n in range(0, len(tasks), br.tabs):
             blocked = None
             for (o, d, day), status, flights, err in br.lookup_many(tasks[n:n + br.tabs]):
@@ -103,7 +103,8 @@ def main(argv=None):
     p.add_argument("--max", type=int, default=40, help="max lookups per run (default 40)")
     p.add_argument("--max-age", type=float, default=12, help="re-check dates older than this many hours")
     p.add_argument("--tabs", type=int, choices=range(1, MAX_TABS + 1), help="searches to load at once (default: the app's setting)")
-    p.add_argument("--headless", action="store_true", help="hide the browser window (more likely to be blocked)")
+    p.add_argument("--headless", action="store_true", help="no browser window at all (more likely to be blocked)")
+    p.add_argument("--show-browser", action="store_true", help="show the browser window instead of keeping it minimized")
     p.add_argument("--phone", action="store_true", help="serve: also allow your paired iPhone on the same Wi-Fi")
     p.add_argument("--trip", type=int, help="trip id for 'seats' (from the Pass value page)")
     a = p.parse_args(argv)
@@ -134,22 +135,22 @@ def main(argv=None):
         return 1
 
     if a.command == "auto":
-        code = run_lookups(conn, planner.plan(conn, searches, a.max_age), a.headless, a.max, offscreen=True, tabs=a.tabs)
+        code = run_lookups(conn, planner.plan(conn, searches, a.max_age), a.headless, a.max, show=a.show_browser, tabs=a.tabs)
         if datetime.now().hour >= 12 and code == 0:  # tomorrow's GoWild seats are open by now
             picked = db.tomorrow_searches(conn, all_searches)
-            code = run_lookups(conn, planner.tomorrow_tasks(picked), a.headless, a.max, profile="browser-profile-tomorrow", offscreen=True, tabs=a.tabs)
+            code = run_lookups(conn, planner.tomorrow_tasks(picked), a.headless, a.max, profile="browser-profile-tomorrow", show=a.show_browser, tabs=a.tabs)
         return code
     if a.command == "tomorrow":
         tasks = planner.tomorrow_tasks(searches if a.ids else db.tomorrow_searches(conn, searches))
         # its own browser, so it can run while a long check is going
-        return run_lookups(conn, tasks, a.headless, a.max, profile="browser-profile-tomorrow", tabs=a.tabs)
+        return run_lookups(conn, tasks, a.headless, a.max, profile="browser-profile-tomorrow", show=a.show_browser, tabs=a.tabs)
     tasks = planner.plan(conn, searches, a.max_age)
     if a.command == "plan":
         for t in tasks:
             print(*t)
         print(f"{len(tasks)} lookups due")
         return 0
-    return run_lookups(conn, tasks, a.headless, a.max, tabs=a.tabs)
+    return run_lookups(conn, tasks, a.headless, a.max, show=a.show_browser, tabs=a.tabs)
 
 
 if __name__ == "__main__":
