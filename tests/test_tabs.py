@@ -109,3 +109,44 @@ def test_saved_searches_page_sets_searches_at_once(tmp_path):
     client.post("/settings/tabs", data={"tabs": "7"})
     assert db.get_setting(db.connect(str(tmp_path / "w.db")), "tabs") == "3"
     assert "about 7 minutes" in client.get("/").get_data(as_text=True)
+
+
+def test_browser_window_starts_minimized_unless_shown(monkeypatch, tmp_path):
+    seen = {}
+
+    class Ctx:
+        pages = []
+
+        def on(self, event, fn):
+            seen.setdefault("events", []).append(event)
+
+        def new_page(self):
+            return object()
+
+        def new_cdp_session(self, page):
+            raise RuntimeError("no CDP here")
+
+        def close(self):
+            pass
+
+    class PW:
+        class chromium:
+            @staticmethod
+            def launch_persistent_context(path, **kw):
+                seen["args"] = kw["args"]
+                return Ctx()
+
+        def stop(self):
+            pass
+
+    import playwright.sync_api as sync_api
+
+    monkeypatch.setattr(sync_api, "sync_playwright", lambda: type("S", (), {"start": lambda self: PW()})())
+    monkeypatch.setattr(browser, "ROOT", str(tmp_path))
+    with frontier.FrontierBrowser(min_delay=0, max_delay=0, tabs=2) as br:
+        assert len(br.pages) == 2  # minimizing failed quietly; the run still works
+    assert "--start-minimized" in seen["args"] and seen["events"] == ["page"]
+    seen.clear()
+    with frontier.FrontierBrowser(show=True):
+        pass
+    assert seen["args"] == [] and "events" not in seen

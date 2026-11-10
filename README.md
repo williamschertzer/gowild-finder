@@ -110,7 +110,9 @@ a day (cron on macOS/Linux, Task Scheduler on Windows).
 
 Frontier has no API for GoWild. The app opens Frontier's normal search page in
 a separate, **logged-out** browser profile and reads the flight list the page
-already contains. Searches never use your account, and the app never books
+already contains. The browser window starts minimized and off screen and
+stays out of your way while it runs (it may show in the Dock); add
+`--show-browser` to `check`, `tomorrow` or `auto` to watch it instead. Searches never use your account, and the app never books
 anything or touches payment. (Seat prices are the one place you log in, by hand,
 in a window you drive yourself.) You book yourself by clicking **Book**, which opens the same search in
 your regular browser.

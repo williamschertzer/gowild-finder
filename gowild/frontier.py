@@ -164,9 +164,9 @@ class FrontierBrowser:
     """A logged-out Chromium with its own profile, separate from your normal browser."""
 
     def __init__(self, headless: bool = False, min_delay: float = 15, max_delay: float = 40, profile: str = "browser-profile",
-                 offscreen: bool = False, tabs: int = 1):
+                 show: bool = False, tabs: int = 1):
         self.headless, self.min_delay, self.max_delay = headless, min_delay, max_delay
-        self.profile, self.offscreen = profile, offscreen
+        self.profile, self.show = profile, show
         self.tabs = max(1, min(MAX_TABS, tabs))
         self._last = 0.0
 
@@ -177,14 +177,32 @@ class FrontierBrowser:
         self._pw = sync_playwright().start()
         self.ctx = self._pw.chromium.launch_persistent_context(
             profile_path(self.profile), headless=self.headless, viewport={"width": 1280, "height": 900}, locale="en-US",
-            # scheduled runs: a real (headed) browser, which Frontier blocks less, parked off screen
-            args=["--window-position=-3000,-3000"] if self.offscreen else [],
+            # a real (headed) browser, which Frontier blocks less, kept out of your way: it starts
+            # minimized and off screen, and every window it opens is minimized right away
+            args=[] if self.show or self.headless else ["--start-minimized", "--window-position=-3000,-3000"],
             executable_path=os.environ.get("GOWILD_CHROMIUM"),  # optional: a Chromium other than Playwright's
         )
+        if not (self.show or self.headless):
+            self.ctx.on("page", self._minimize)  # tabs, popups, anything the site opens
         self.pages = list(self.ctx.pages[:1]) or [self.ctx.new_page()]
         while len(self.pages) < self.tabs:
             self.pages.append(self.ctx.new_page())
+        if not (self.show or self.headless):
+            for page in self.pages:
+                self._minimize(page)
         return self
+
+    def _minimize(self, page):
+        """Minimize the window holding this page (Chromium DevTools protocol; best effort)."""
+        try:
+            cdp = self.ctx.new_cdp_session(page)
+            try:
+                win = cdp.send("Browser.getWindowForTarget")["windowId"]
+                cdp.send("Browser.setWindowBounds", {"windowId": win, "bounds": {"windowState": "minimized"}})
+            finally:
+                cdp.detach()
+        except Exception:
+            pass  # a window left showing is better than a failed run
 
     def __exit__(self, *exc):
         try:
