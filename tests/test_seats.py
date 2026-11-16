@@ -36,3 +36,57 @@ def test_value_page_shows_seat_prices(tmp_path):
     assert "UpFront Plus 1 · $89" in page
     assert "Premium 2 · $45–52" in page
     assert "Seat prices" in page
+
+
+# ---------------------------------------------------------------- big front seats on search results
+
+def _flight(**extra):
+    return {"isGoWildFareEnabled": True, "goWildFare": 13.97, "stopsText": "Nonstop",
+            "legs": [{"flightNumber": 1234, "departureDate": "2027-03-10T07:05:00", "arrivalDate": "2027-03-10T08:20:00"}], **extra}
+
+
+def test_front_seats_detected_from_fare_and_bundle_data():
+    from gowild import frontier
+    assert frontier.parse_flight(_flight())["front_seats"] is None
+    assert frontier.parse_flight(_flight(bundles=[{"name": "UpFront Plus", "price": 59}]))["front_seats"] == "UpFront Plus"
+    assert frontier.parse_flight(_flight(hasUpFrontPlus=True))["front_seats"] == "UpFront Plus"
+    assert frontier.parse_flight(_flight(hasUpFrontPlus=False))["front_seats"] is None
+    assert frontier.parse_flight(_flight(firstClassFare=0))["front_seats"] is None
+    both = _flight(bundles=[{"name": "First Class Bundle"}, {"name": "UpFront Plus"}])
+    assert frontier.parse_flight(both)["front_seats"] == "First Class"
+    assert frontier.parse_flight(_flight(equipmentType="A321neo"))["aircraft"] == "A321neo"
+
+
+def test_filter_front_modes():
+    from gowild.frontier import filter_front
+    fl = [{"front_seats": "First Class"}, {"front_seats": "UpFront Plus"}, {"front_seats": None}]
+    assert filter_front(fl, "") == fl
+    assert filter_front(fl, "big") == fl[:2]
+    assert filter_front(fl, "first") == fl[:1]
+
+
+def test_front_filter_on_search_and_tomorrow_pages(tmp_path):
+    import json
+    from datetime import date, timedelta
+    from gowild import db
+    from gowild.web import create_app
+    path = str(tmp_path / "t.db")
+    c = db.connect(path)
+    d = (date.today() + timedelta(days=1)).isoformat()
+    c.execute("INSERT INTO searches (name, origins, destinations, start_date, end_date) VALUES ('t','DEN','LAS',?,?)", (d, d))
+    c.commit()
+    flights = [
+        {"depart": d + "T07:00", "arrive": d + "T08:00", "flight_numbers": ["111"], "gowild": True, "gowild_price": 14.0, "front_seats": "First Class"},
+        {"depart": d + "T09:00", "arrive": d + "T10:00", "flight_numbers": ["222"], "gowild": True, "gowild_price": 14.0, "front_seats": None},
+    ]
+    db.save_check(c, "DEN", "LAS", d, "ok", flights)
+    db.set_setting(c, "tomorrow_ids", "1")
+    app = create_app(path).test_client()
+    page = app.get("/searches/1").get_data(as_text=True)
+    assert "111" in page and "222" in page and "First Class seats" in page
+    page = app.get("/searches/1?front=first").get_data(as_text=True)
+    assert "111" in page and "222" not in page and "1 flight hidden" in page
+    page = app.get("/tomorrow").get_data(as_text=True)  # choice is remembered
+    assert "111" in page and "222" not in page
+    page = app.get("/tomorrow?front=").get_data(as_text=True)
+    assert "222" in page

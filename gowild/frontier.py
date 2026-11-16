@@ -100,6 +100,31 @@ def _times(d):
     return (min(deps) if deps else None), (max(arrs) if arrs else None)
 
 
+# Big front seats. Today that's UpFront Plus (front rows, extra legroom, middle seat blocked).
+# Frontier's new First Class (2-2 seats in rows 1-2) starts March 5, 2027 and replaces it as
+# planes are refitted, so a flight can have either. The whole fleet is A320-family, so the
+# aircraft type doesn't tell you; the fare/bundle data on the results page might.
+FRONT_TYPES = ("First Class", "UpFront Plus")
+_FIRST = re.compile(r"first[\s_-]?(class|seat|bundle|cabin)", re.I)
+_UPFRONT = re.compile(r"up[\s_-]?front", re.I)
+_AIRCRAFT = re.compile(r"^(equipment|aircraft)(type|code|name|model)?$", re.I)
+
+
+def front_seats(d: dict) -> str | None:
+    """'First Class', 'UpFront Plus', or None when the flight data doesn't say."""
+    found = set()
+    for x in _walk(d):
+        for k, v in x.items():
+            if v is False or v in (0, None, "") or isinstance(v, (dict, list)) and not v:
+                continue  # "hasFirstClass": false says there isn't one
+            text = k + " " + (v if isinstance(v, str) else "")
+            if _FIRST.search(text):
+                found.add("First Class")
+            elif _UPFRONT.search(text):
+                found.add("UpFront Plus")
+    return next((t for t in FRONT_TYPES if t in found), None)
+
+
 def parse_flight(d: dict) -> dict:
     gw_flag = _first(d, re.compile(r"go_?wild.*(enabled|available)", re.I), (bool,))
     gw_price = _num(_first(d, re.compile(r"go_?wild.*(fare|price|amount)$", re.I), (int, float, str)))
@@ -109,6 +134,7 @@ def parse_flight(d: dict) -> dict:
     nums = sorted({str(x["flightNumber"]) for x in _walk(d) if x.get("flightNumber") is not None})
     stops = _first(d, re.compile(r"^stops(Text)?$", re.I), (int, str))
     dep, arr = _times(d)
+    aircraft = _first(d, _AIRCRAFT, (str,))
     available = bool(gw_flag) if gw_flag is not None else (gw_price is not None and gw_price > 0)
     if gw_seats is not None and gw_seats <= 0:
         available = False
@@ -122,6 +148,8 @@ def parse_flight(d: dict) -> dict:
         "gowild_seats": int(gw_seats) if gw_seats is not None else None,
         "standard_fare": std,
         "discount_den_fare": disc,
+        "front_seats": front_seats(d),
+        "aircraft": aircraft,
     }
 
 
@@ -156,6 +184,25 @@ def parse_results(page_html: str, extra_blobs=()) -> tuple[str, list[dict]]:
     if no_flights_page(page_html):
         return "no_flights", []
     return "unparsed", []
+
+
+def save_sample(o, d, blobs):
+    """Keep the flight data from one results page so seat detection can be tuned to it."""
+    try:
+        os.makedirs(DEBUG_DIR, exist_ok=True)
+        with open(os.path.join(DEBUG_DIR, f"flights-{o}-{d}.json"), "w") as fh:
+            json.dump(blobs, fh, indent=1)
+    except Exception:
+        pass
+
+
+def filter_front(flights: list[dict], mode: str | None) -> list[dict]:
+    """mode 'big': UpFront Plus or First Class; 'first': First Class only; else everything."""
+    if mode == "first":
+        return [f for f in flights if f.get("front_seats") == "First Class"]
+    if mode == "big":
+        return [f for f in flights if f.get("front_seats") in FRONT_TYPES]
+    return flights
 
 
 # ---------------------------------------------------------------- browsing
@@ -278,6 +325,8 @@ class FrontierBrowser:
                 results.append((task, "blocked", [], Blocked(f"Frontier showed a bot check on {o}-{d} {day}")))
                 continue
             status, flights = parse_results(page_html, captured[i])
+            if status == "ok" and flights and not any(f["front_seats"] for f in flights):
+                save_sample(o, d, list(extract_json_blobs(page_html)) + captured[i])
             if status == "unparsed":
                 os.makedirs(DEBUG_DIR, exist_ok=True)
                 with open(os.path.join(DEBUG_DIR, f"{o}-{d}-{day}.html"), "w") as fh:

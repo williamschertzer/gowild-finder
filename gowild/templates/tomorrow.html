@@ -20,13 +20,14 @@
   {% endif %}
 </div>
 {% include "_job.html" %}
+{% include "_front_filter.html" %}
 <div class="card">
   {% if flights %}
   <div class="list">
     {% for f in flights %}{% with book_url=f.url, origin=f.origin, dest=f.dest, date=f.date %}{% include "_flight.html" %}{% endwith %}{% endfor %}
   </div>
   {% else %}
-  <p class="muted" style="margin:0">No GoWild flights found for tomorrow yet.</p>
+  <p class="muted" style="margin:0">{% if front %}No GoWild flights with {{ front_modes[front] | lower }} found for tomorrow.{% else %}No GoWild flights found for tomorrow yet.{% endif %}</p>
   {% endif %}
   {% if empty_routes %}<p class="muted small" style="margin-bottom:0">No GoWild seats: {% for r in empty_routes %}{{ r.origin }}→{{ r.dest }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
 </div>

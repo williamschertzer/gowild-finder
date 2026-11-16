@@ -2,7 +2,8 @@
 <div class="item">
   <div class="main">
     <b>{{ f.dep_txt }}</b> <span class="muted">→ {{ f.arr_txt }}</span>
-    <div class="meta">{{ origin }} → {{ dest }} · {{ f.flight_numbers|join(', ') or 'flight ?' }}{% if f.stops %} · {{ f.stops }}{% endif %}</div>
+    <div class="meta">{{ origin }} → {{ dest }} · {{ f.flight_numbers|join(', ') or 'flight ?' }}{% if f.stops %} · {{ f.stops }}{% endif %}{% if f.aircraft %} · {{ f.aircraft }}{% endif %}</div>
+    {% if f.front_seats %}<div class="meta"><span class="pill early">{{ f.front_seats }} seats</span></div>{% endif %}
     <div class="meta">GoWild {{ '$%.2f'|format(f.gowild_price) if f.gowild_price is not none else 'available' }}{% if f.gowild_seats %} · {{ f.gowild_seats }} left{% endif %}{% if f.standard_fare %} · cash ${{ '%.0f'|format(f.standard_fare) }}{% endif %}</div>
   </div>
   <div class="side">
