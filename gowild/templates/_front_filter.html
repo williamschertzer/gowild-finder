@@ -1,0 +1,5 @@
+{# big-front-seat filter; expects front, front_modes, unknown_front #}
+<nav class="tabs" aria-label="Front seats">
+  {% for key, label in front_modes.items() %}<a href="{{ front_url(key) }}" class="{{ 'on' if front == key }}">{{ label }}</a>{% endfor %}
+</nav>
+{% if front %}<p class="muted small" style="margin-top:-8px">Showing only flights whose seat data lists {{ 'First Class' if front == 'first' else 'UpFront Plus or First Class' }} seats.{% if unknown_front %} {{ unknown_front }} flight{{ 's' if unknown_front != 1 }} hidden because Frontier's results didn't say; tap All flights to see them.{% endif %}</p>{% endif %}

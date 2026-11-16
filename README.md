@@ -8,6 +8,13 @@ your own computer.
   fares, including the new **Early Booking** select flights you can book ahead.
 - **Fly tomorrow.** Pick saved searches and check them for tomorrow (when
   regular GoWild seats open) and lists the flights by time with a Book link.
+- **Big front seats filter.** On a search or Fly tomorrow, tap **Big front
+  seats** (UpFront Plus or First Class) or **First Class** to show only flights
+  whose results say they have them. Frontier's First Class (2-2 seats in rows
+  1-2) starts March 5, 2027 and replaces UpFront Plus as planes are refitted.
+  Your pick is remembered. Flights the results don't describe are hidden and
+  counted, and a sample of the flight data is saved to `debug/` so detection
+  can be tuned.
 - **Pass value.** Log trips with the cash fare you avoided and see savings,
   what's left to break even, and how many more trips that takes.
 - **Upgrade timing.** Set your Frontier Miles tier and each upcoming trip shows
