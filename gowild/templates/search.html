@@ -12,6 +12,7 @@
   {% for t in route_tabs %}<a href="{{ url_for('show_search', sid=s.id, route=t.key) }}" class="{{ 'on' if route == t.key }}">{{ t.label }} <span class="count">{{ t.dates }}</span></a>{% endfor %}
 </nav>
 {% endif %}
+{% include "_front_filter.html" %}
 <div class="card">
   <div class="legend">
     <span><i style="background:var(--gold-bg)"></i>Early Booking</span>
@@ -35,7 +36,7 @@
 
 <div class="card">
   <h2>GoWild flights</h2>
-  {% if not hits %}<p class="muted">None found yet. Run a check, or widen the dates.</p>{% endif %}
+  {% if not hits %}<p class="muted">{% if front %}None found yet with {{ front_modes[front] | lower }}. Tap All flights to see every GoWild flight.{% else %}None found yet. Run a check, or widen the dates.{% endif %}</p>{% endif %}
   {% for c in hits %}
     <div class="group-head" id="d{{ c.date }}">{{ c.date }} · {{ c.origin }} → {{ c.dest }} {% if c.blackout %}<span class="pill bo">Blackout date · Peak Day charge</span>{% elif c.early %}<span class="pill early">Early Booking</span>{% else %}<span class="pill gw">GoWild</span>{% endif %} <span class="muted small" style="font-weight:400">checked {{ c.checked_at[:16].replace('T',' ') }}</span></div>
     <div class="list">

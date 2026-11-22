@@ -6,8 +6,9 @@
       {% if f.days_later %}<span class="pill nextday" title="Lands {{ f.days_later }} day{{ 's' if f.days_later > 1 }} after it leaves">+{{ f.days_later }} day{{ 's' if f.days_later > 1 }} · lands {{ f.arr_day }}</span>{% endif %}
     </div>
     <div class="meta">
-      {% if f.total_txt %}<span class="total">{{ f.total_txt }} total</span> · {% endif %}{{ f.stops_txt or f.stops or '' }}{% if f.stops_txt or f.stops %} · {% endif %}{{ f.route or (origin ~ ' → ' ~ dest) }}{% if not f.layovers %} · F9 {{ f.flight_numbers|join(', ') or '?' }}{% endif %}
+      {% if f.total_txt %}<span class="total">{{ f.total_txt }} total</span> · {% endif %}{{ f.stops_txt or f.stops or '' }}{% if f.stops_txt or f.stops %} · {% endif %}{{ f.route or (origin ~ ' → ' ~ dest) }}{% if not f.layovers %} · F9 {{ f.flight_numbers|join(', ') or '?' }}{% endif %}{% if f.aircraft %} · {{ f.aircraft }}{% endif %}
     </div>
+    {% if f.front_seats %}<div class="meta"><span class="pill early">{{ f.front_seats }} seats</span></div>{% endif %}
     {% if f.layovers %}
     <ol class="legs">
       {% for l in f.legs %}

@@ -186,7 +186,7 @@ def test_search_page_has_a_tab_per_airport_pair(tmp_path):
     den = client.get("/searches/1?route=DEN-LAS").get_data(as_text=True)
     assert "None found yet" not in den
     client.post("/searches", data={"name": "Single", "origins": "DEN", "destinations": "LAS", "start_date": date.today().isoformat(), "end_date": end})
-    assert 'class="tabs"' not in client.get("/searches/2").get_data(as_text=True)
+    assert 'aria-label="Airport pairs"' not in client.get("/searches/2").get_data(as_text=True)
 
 
 

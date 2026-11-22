@@ -10,7 +10,7 @@ from flask import Flask, abort, make_response, redirect, render_template, reques
 
 from . import db, notify, phone, rules, seats, value
 from .db import split_codes
-from .frontier import DEFAULT_TABS, MAX_TABS, search_url
+from .frontier import DEFAULT_TABS, MAX_TABS, filter_front, search_url
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -72,6 +72,33 @@ def _decorate(check):
     check["early"] = early and bool(check["flights"])
     check["blackout"] = rules.is_blackout(d)
     check["url"] = search_url(check["origin"], check["dest"], check["date"])
+    return check
+
+
+FRONT_MODES = {"": "All flights", "big": "Big front seats", "first": "First Class"}
+
+
+def _front_mode(c):
+    """The big-front-seat filter: from the link the user tapped, else the last one they picked."""
+    mode = request.args.get("front")
+    if mode is not None and mode in FRONT_MODES:
+        db.set_setting(c, "front", mode)
+        return mode
+    mode = db.get_setting(c, "front", "")
+    return mode if mode in FRONT_MODES else ""
+
+
+def front_url(mode):
+    """This page's URL with the front-seat filter set to mode (other filters kept)."""
+    args = {k: v for k, v in request.args.items() if k != "front"}
+    return url_for(request.endpoint, **(request.view_args or {}), **args, front=mode)
+
+
+def _apply_front(check, mode):
+    """Drop flights without the chosen front seats; remember how many we couldn't tell about."""
+    check["had_gowild"] = bool(check["flights"])
+    check["unknown_front"] = sum(1 for f in check["flights"] if not f.get("front_seats")) if mode else 0
+    check["flights"] = filter_front(check["flights"], mode)
     return check
 
 
@@ -232,7 +259,7 @@ def create_app(db_path=None, phone_access=False):
 
     @app.context_processor
     def globals_():
-        return {"pass_name": rules.PASS_NAME, "today": date.today(), "is_local": is_local()}
+        return {"pass_name": rules.PASS_NAME, "today": date.today(), "is_local": is_local(), "front_url": front_url}
 
     @app.get("/")
     def index():
@@ -309,7 +336,8 @@ def create_app(db_path=None, phone_access=False):
     def show_search(sid):
         c = conn()
         s = dict(c.execute("SELECT * FROM searches WHERE id=?", (sid,)).fetchone())
-        all_checks = [_decorate(x) for x in db.get_checks(c, split_codes(s["origins"]), split_codes(s["destinations"]), s["start_date"], s["end_date"])]
+        front = _front_mode(c)
+        all_checks = [_apply_front(_decorate(x), front) for x in db.get_checks(c, split_codes(s["origins"]), split_codes(s["destinations"]), s["start_date"], s["end_date"])]
         future = date.today().isoformat()
         # one tab per airport pair, plus "All", when the search has more than one pair
         routes = [(o, d) for o in split_codes(s["origins"]) for d in split_codes(s["destinations"]) if o != d]
@@ -328,7 +356,8 @@ def create_app(db_path=None, phone_access=False):
         hits = [x for x in checks if x["flights"] and x["date"] > future]
         all_dates = len({x["date"] for x in all_checks if x["flights"] and x["date"] > future})
         return render_template("search.html", s=s, months=month_grid(start, end, by_date), hits=hits, job=_job("check"),
-                               route_tabs=tabs, route=route, all_dates=all_dates)
+                               route_tabs=tabs, route=route, all_dates=all_dates, front=front, front_modes=FRONT_MODES,
+                               unknown_front=sum(x["unknown_front"] for x in checks if x["date"] > future))
 
     @app.post("/run/<kind>")
     def run(kind):
@@ -370,16 +399,18 @@ def create_app(db_path=None, phone_access=False):
         searches = db.ordered_searches(c)
         picked = db.tomorrow_searches(c, searches)
         routes = {(o, d) for s in picked for o in split_codes(s["origins"]) for d in split_codes(s["destinations"])}
-        rows = [_decorate(dict(r, flights=json.loads(r["flights"]))) for r in c.execute("SELECT * FROM checks WHERE date=?", (t,))
+        front = _front_mode(c)
+        rows = [_apply_front(_decorate(dict(r, flights=json.loads(r["flights"]))), front) for r in c.execute("SELECT * FROM checks WHERE date=?", (t,))
                 if (r["origin"], r["dest"]) in routes]
         flights = sorted(
             ({**f, "origin": r["origin"], "dest": r["dest"], "url": r["url"], "date": t} for r in rows for f in r["flights"]),
             key=lambda f: f["depart"] or "",
         )
         checked = max((r["checked_at"] for r in rows), default=None)
-        empty_routes = [r for r in rows if not r["flights"]]
+        empty_routes = [r for r in rows if not r["had_gowild"]]
         return render_template("tomorrow.html", day=date.fromisoformat(t), flights=flights, checked=checked, empty_routes=empty_routes, job=_job("tomorrow"),
-                               searches=searches, picked={s["id"] for s in picked})
+                               searches=searches, picked={s["id"] for s in picked}, front=front, front_modes=FRONT_MODES,
+                               unknown_front=sum(r["unknown_front"] for r in rows))
 
     @app.route("/value", methods=["GET", "POST"])
     def pass_value():
