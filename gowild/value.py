@@ -2,16 +2,26 @@
 import math
 from datetime import date
 
+from .db import journeys
+
 
 def summarize(trips, pass_price: float, pass_end: date, today: date | None = None) -> dict:
+    """Saving on a trip = its cash fare (the same flights without GoWild) minus what you paid
+    with GoWild. A trip with no cash fare yet has no known saving, so it's left out of the
+    savings and averages (rather than counted as a loss of everything you paid)."""
     today = today or date.today()
-    saved = sum((t["cash_fare"] or 0) - (t["paid"] or 0) for t in trips)
+    priced = [t for t in trips if t["cash_fare"]]
+    saved = sum(t["cash_fare"] - (t["paid"] or 0) for t in priced)
     paid = sum(t["paid"] or 0 for t in trips)
-    n = len(trips)
-    avg = saved / n if n else None
+    # a trip is a whole journey: a connection's two flights are one trip
+    groups = journeys(trips) if all("date" in t for t in trips) else [[t] for t in trips]
+    n = len(groups)
+    priced_trips = sum(1 for g in groups if all(t["cash_fare"] for t in g))
+    avg = saved / priced_trips if priced_trips else None
     remaining = max(pass_price - saved, 0)
     return {
         "trips": n,
+        "unpriced": n - priced_trips,
         "saved": round(saved, 2),
         "paid": round(paid, 2),
         "pass_price": pass_price,

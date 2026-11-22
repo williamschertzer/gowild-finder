@@ -80,12 +80,29 @@ def parse_page(url: str, page_html: str) -> list[dict]:
             "date": date, "depart_time": hm, "origin": o, "dest": dst, "flight_no": num,
             "arrive": f"{ayy}-{amo}-{add}T{ahm}", "confirmation": pnr,
         }
-    total = re.search(r"var\s+totalPrice\s*=\s*([\d.]+)", page_html)
-    pax = re.search(r"var\s+totalPassengers\s*=\s*(\d+)", page_html)
     out = sorted(flights.values(), key=lambda t: (t["date"], t["depart_time"]))
-    for t in out:  # a booking's total, per traveler, split across its flights
-        t["paid"] = round(float(total.group(1)) / max(1, int(pax.group(1)) if pax else 1) / len(out), 2) if total else None
+    fare = _fare_paid(page_html)
+    for t in out:  # per traveler, split across the booking's flights
+        t["paid"] = round(fare / len(out), 2) if fare is not None else None
     return out
+
+
+def _fare_paid(page_html: str) -> float | None:
+    """What the flights cost with GoWild, per traveler: fare plus taxes and fees.
+
+    Bags, seats and bundles are left out on purpose: you'd buy those with or without
+    the pass, so counting them would understate what GoWild saved. The page's
+    `var attrs = {...,"BaseFare":112.55,...,"TaxRevenue":119.64,...}` has the split;
+    `var totalPrice` (everything, extras included) is the fallback.
+    """
+    pax = re.search(r"var\s+totalPassengers\s*=\s*(\d+)", page_html)
+    pax = max(1, int(pax.group(1))) if pax else 1
+    base = re.search(r'"BaseFare"\s*:\s*([\d.]+)', page_html)
+    tax = re.search(r'"TaxRevenue"\s*:\s*([\d.]+)', page_html)
+    if base and tax:
+        return (float(base.group(1)) + float(tax.group(1))) / pax
+    total = re.search(r"var\s+totalPrice\s*=\s*([\d.]+)", page_html)
+    return float(total.group(1)) / pax if total else None
 
 
 def parse_pages(pages) -> list[dict]:

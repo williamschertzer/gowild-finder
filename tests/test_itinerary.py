@@ -2,7 +2,9 @@
 import html
 import json
 
-from gowild import db, frontier, mytrips
+from datetime import date
+
+from gowild import db, frontier, mytrips, value
 from gowild.web import create_app, decorate_flight
 
 # trimmed from a real booking.flyfrontier.com/Booking/Index page (names and codes changed)
@@ -92,3 +94,32 @@ def page_with(data):
 def test_embedded_page_round_trip():
     status, flights = frontier.parse_results(page_with(CONNECTING))
     assert status == "ok" and flights[0]["flight_numbers"] == ["1403", "1755"]
+
+
+def test_connecting_trip_priced_as_one_journey_and_paid_excludes_extras(tmp_path):
+    conn = db.connect(str(tmp_path / "v.db"))
+    # the check saw the whole itinerary IAD -> ONT, priced as one fare
+    db.save_check(conn, "IAD", "ONT", "2026-11-28", "ok", [
+        {"flight_numbers": ["1923", "4277"], "standard_fare": 523.98, "gowild_price": 232.19}])
+    page = TRIP_PAGE.replace("</html>", '<script>var attrs = {"BaseFare":112.5500,"TaxRevenue":119.6400};</script></html>')
+    trips = mytrips.parse_pages([("u", page)])
+    assert [t["paid"] for t in trips] == [116.09, 116.09]  # fare + taxes, not the $350.19 total with bags
+    assert db.import_trips(conn, trips) == 2
+    rows = [dict(r) for r in conn.execute("SELECT * FROM trips")]
+    assert [r["cash_fare"] for r in rows] == [261.99, 261.99] and all(r["notes"] == "imported" for r in rows)
+    v = value.summarize(rows, 250, date(2027, 2, 28), today=date(2026, 11, 1))
+    assert v["saved"] == 291.8 and v["broke_even"] and v["unpriced"] == 0
+    assert v["trips"] == 1 and v["avg_saving"] == 291.8  # two flights, one connecting trip
+
+
+def test_trips_without_a_cash_fare_are_not_counted_as_losses():
+    trips = [{"cash_fare": 0, "paid": 175}, {"cash_fare": 120, "paid": 20}]
+    v = value.summarize(trips, 250, date(2027, 2, 28), today=date(2026, 11, 1))
+    assert v["saved"] == 100 and v["remaining"] == 150 and v["unpriced"] == 1 and v["avg_saving"] == 100
+
+
+def test_missing_fares_are_looked_up_by_journey(tmp_path):
+    conn = db.connect(str(tmp_path / "m.db"))
+    db.import_trips(conn, mytrips.parse_pages([("u", TRIP_PAGE)]))
+    assert db.trips_missing_fares(conn, "2026-11-01") == [("IAD", "ONT", "2026-11-28")]
+    assert db.trips_missing_fares(conn, "2026-12-01") == []  # past trips can't be searched

@@ -120,7 +120,7 @@ def latest_seats(conn, trip_id):
 
 
 def import_trips(conn, trips) -> int:
-    """Add imported flights not already logged; fill fares from what checks saw."""
+    """Add imported flights not already logged, then fill cash fares from what checks saw."""
     added = 0
     for t in trips:
         dup = conn.execute(
@@ -132,20 +132,78 @@ def import_trips(conn, trips) -> int:
                 conn.execute("UPDATE trips SET arrive=? WHERE date=? AND origin=? AND dest=? AND flight_no=? AND arrive IS NULL",
                              (t["arrive"], t["date"], t["origin"], t["dest"], t["flight_no"]))
             continue
-        cash, paid = 0.0, t.get("paid")
-        row = conn.execute("SELECT flights FROM checks WHERE origin=? AND dest=? AND date=?", (t["origin"], t["dest"], t["date"])).fetchone()
-        for f in json.loads(row["flights"]) if row else []:
-            if t["flight_no"] in f.get("flight_numbers", []):
-                cash = f.get("standard_fare") or 0.0
-                paid = paid if paid is not None else f.get("gowild_price")
         conn.execute(
             "INSERT INTO trips (date, depart_time, origin, dest, flight_no, cash_fare, paid, confirmation, notes, arrive) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (t["date"], t["depart_time"], t["origin"], t["dest"], t["flight_no"], cash, paid or 0.0, t.get("confirmation"),
-             "imported" + ("" if cash else "; add cash fare"), t.get("arrive")),
+            (t["date"], t["depart_time"], t["origin"], t["dest"], t["flight_no"], 0.0, t.get("paid") or 0.0, t.get("confirmation"),
+             "imported; add cash fare", t.get("arrive")),
         )
         added += 1
     conn.commit()
+    fill_cash_fares(conn)
     return added
+
+
+def _flight_nos(trip) -> list[str]:
+    return [n.strip() for n in str(trip["flight_no"] or "").replace(" ", ",").split(",") if n.strip()]
+
+
+def journeys(trips) -> list[list[dict]]:
+    """Group logged flights into journeys: a connection is the next flight of the same
+    booking, leaving from where the last one landed, the same or the next day.
+    Frontier prices a connecting itinerary as one fare, so that's the unit to compare."""
+    out = []
+    for t in sorted(trips, key=lambda t: (t["date"], t["depart_time"] or "")):
+        prev = out[-1][-1] if out else None
+        if prev and t["confirmation"] and t["confirmation"] == prev["confirmation"] and t["origin"] == prev["dest"] \
+                and 0 <= (datetime.fromisoformat(t["date"]) - datetime.fromisoformat(prev["date"])).days <= 1:
+            out[-1].append(t)
+        else:
+            out.append([t])
+    return out
+
+
+def cash_fare_for(conn, journey) -> dict | None:
+    """The fare check that saw this exact itinerary (same route, date and flight numbers)."""
+    nos = {n for t in journey for n in _flight_nos(t)}
+    if not nos:
+        return None
+    row = conn.execute("SELECT flights FROM checks WHERE origin=? AND dest=? AND date=?",
+                       (journey[0]["origin"], journey[-1]["dest"], journey[0]["date"])).fetchone()
+    for f in json.loads(row["flights"]) if row else []:
+        if set(map(str, f.get("flight_numbers", []))) == nos and f.get("standard_fare"):
+            return f
+    return None
+
+
+def fill_cash_fares(conn) -> int:
+    """Give trips with no cash fare the price Frontier asked for the same itinerary without
+    GoWild, split across its flights. Where the trip's GoWild cost isn't known, use the
+    GoWild fare the check saw (fare plus taxes, the like-for-like comparison)."""
+    trips = [dict(r) for r in conn.execute("SELECT * FROM trips")]
+    filled = 0
+    for j in journeys(trips):
+        if all(t["cash_fare"] for t in j):
+            continue
+        f = cash_fare_for(conn, j)
+        if not f:
+            continue
+        n = len(j)
+        for t in j:
+            if t["cash_fare"]:
+                continue
+            paid = t["paid"] or round((f.get("gowild_price") or 0) / n, 2)
+            conn.execute("UPDATE trips SET cash_fare=?, paid=?, notes=REPLACE(COALESCE(notes,''), '; add cash fare', '') WHERE id=?",
+                         (round(f["standard_fare"] / n, 2), paid, t["id"]))
+            filled += 1
+    conn.commit()
+    return filled
+
+
+def trips_missing_fares(conn, after: str) -> list[tuple[str, str, str]]:
+    """(origin, dest, date) lookups that would price upcoming journeys with no cash fare."""
+    trips = [dict(r) for r in conn.execute("SELECT * FROM trips")]
+    return sorted({(j[0]["origin"], j[-1]["dest"], j[0]["date"]) for j in journeys(trips)
+                   if j[0]["date"] > after and not all(t["cash_fare"] for t in j)})
 
 
 def tomorrow_searches(conn, searches):

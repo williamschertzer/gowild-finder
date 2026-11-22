@@ -381,6 +381,11 @@ def create_app(db_path=None, phone_access=False):
         _spawn("account", "import")
         return redirect(url_for("pass_value") + "#trips")
 
+    @app.post("/trips/fares")
+    def trip_fares():
+        _spawn("account", "fares")
+        return redirect(url_for("pass_value") + "#trips")
+
     @app.post("/stop/<kind>")
     def stop(kind):
         _stop(kind)
@@ -436,10 +441,11 @@ def create_app(db_path=None, phone_access=False):
             return redirect(url_for("pass_value"))
         price = float(db.get_setting(c, "pass_price", rules.PASS_PRICE))
         tier = db.get_setting(c, "tier", "none")
+        db.fill_cash_fares(c)  # a check may have priced a logged trip since
         trips = [dict(t) for t in c.execute("SELECT * FROM trips ORDER BY date, depart_time")]
         now = datetime.now()
         for t in trips:
-            t["saved"] = round((t["cash_fare"] or 0) - (t["paid"] or 0), 2)
+            t["saved"] = round(t["cash_fare"] - (t["paid"] or 0), 2) if t["cash_fare"] else None
             if t["depart_time"]:
                 dep = datetime.fromisoformat(f"{t['date']}T{t['depart_time']}")
                 t["dep_txt"] = _hhmm(dep.isoformat())

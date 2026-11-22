@@ -5,6 +5,7 @@
   plan       show what 'check' would look up, without opening a browser
   seats      read paid seat prices for a booked trip (--trip ID); you log in yourself
   import     add your past and upcoming Frontier trips to the trip log; you log in yourself
+  fares      look up the cash fare (without GoWild) for upcoming logged trips that don't have one
   auto       what the scheduler runs: a check, plus tomorrow's check from noon on
   serve      open the web app at http://127.0.0.1:5050 (--phone to allow your iPhone)
 """
@@ -87,7 +88,23 @@ def run_import(conn):
         return 1
     added = db.import_trips(conn, trips)
     print(f"Found {len(trips)} flights, added {added} new ones to your trip log.")
-    return 0
+    return run_fares(conn)
+
+
+def run_fares(conn, headless=False, show=False):
+    """Price upcoming trips that have no cash fare: search their route and date logged out,
+    like a normal check, then match the exact flights. Past trips can't be priced this way."""
+    tasks = db.trips_missing_fares(conn, date.today().isoformat())
+    if not tasks:
+        missing = conn.execute("SELECT COUNT(*) FROM trips WHERE cash_fare IS NULL OR cash_fare=0").fetchone()[0]
+        print("Every upcoming trip has a cash fare." + (f" {missing} past trip(s) need one typed in." if missing else ""))
+        return 0
+    print("Looking up cash fares for your upcoming trips...", flush=True)
+    code = run_lookups(conn, tasks, headless, len(tasks), show=show, tabs=1)
+    filled = db.fill_cash_fares(conn)
+    print(f"Added cash fares to {filled} flight(s)." if filled else
+          "Frontier didn't list those exact flights (sold out or changed); type the cash fare in yourself.")
+    return code
 
 
 def _stop_on_sigterm(*_):
@@ -98,7 +115,7 @@ def _stop_on_sigterm(*_):
 def main(argv=None):
     signal.signal(signal.SIGTERM, _stop_on_sigterm)
     p = argparse.ArgumentParser(prog="gowild", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", choices=["check", "tomorrow", "plan", "seats", "import", "auto", "serve"])
+    p.add_argument("command", choices=["check", "tomorrow", "plan", "seats", "import", "fares", "auto", "serve"])
     p.add_argument("--search", help="only this saved search (name)")
     p.add_argument("--ids", help="only these saved searches, by id (e.g. 1,3)")
     p.add_argument("--max", type=int, default=40, help="max lookups per run (default 40)")
@@ -123,6 +140,8 @@ def main(argv=None):
         return run_seats(conn, a.trip)
     if a.command == "import":
         return run_import(conn)
+    if a.command == "fares":
+        return run_fares(conn, a.headless, a.show_browser)
 
     searches = [s for s in db.ordered_searches(conn) if s["active"]]
     if a.search:

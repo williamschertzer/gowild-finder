@@ -13,13 +13,15 @@
     <div class="stat"><span class="muted">Real cost / trip</span><b>{{ '$%.0f'|format(v.cost_per_trip) if v.cost_per_trip is not none else '–' }}</b></div>
     <div class="stat"><span class="muted">Days left</span><b>{{ v.days_left }}</b></div>
   </div>
-  <p class="muted small" style="margin-bottom:0">Saving per trip = what the same flight cost in cash minus what you paid with GoWild. Trips to break even uses your average saving{% if v.avg_saving is none %} (about $80 until you log a trip){% endif %}.</p>
+  {% if v.unpriced %}<p style="color:var(--gold);font-weight:600">{{ v.unpriced }} trip{{ 's' if v.unpriced > 1 }} without a cash fare {{ 'are' if v.unpriced > 1 else 'is' }} left out of these numbers. <a href="#trips">Add the fare, or look it up</a>.</p>{% endif %}
+  <p class="muted small" style="margin-bottom:0">Saving per trip = what the same flights cost without GoWild (Frontier's standard fare) minus what you paid with GoWild (fare plus taxes; bags and seats cost the same either way, so they're left out). Trips to break even uses your average saving{% if v.avg_saving is none %} (about $80 until you log a trip){% endif %}.</p>
 </div>
 
 <div class="card" id="trips">
   <h2>Trips</h2>
   <div class="actions" style="margin-bottom:14px">
     <form method="post" action="{{ url_for('import_trips') }}"><button class="ghost" {{ 'disabled' if job.running }}>Import from my Frontier account</button></form>
+    {% if v.unpriced %}<form method="post" action="{{ url_for('trip_fares') }}"><button class="ghost" {{ 'disabled' if job.running }}>Look up cash fares</button></form>{% endif %}
     <a class="btn ghost" href="#log">Add a trip by hand</a>
   </div>
   {% if not trips %}<p class="muted">No trips logged yet.</p>{% else %}
@@ -27,7 +29,7 @@
   {% for t in trips %}
     <div class="item">
       <div class="main">
-        <b>{{ t.origin }} → {{ t.dest }}</b> <span class="pill gw">saved ${{ '%.0f'|format(t.saved) }}</span>
+        <b>{{ t.origin }} → {{ t.dest }}</b> {% if t.saved is none %}<span class="pill early">add cash fare</span>{% elif t.saved >= 0 %}<span class="pill gw">saved ${{ '%.0f'|format(t.saved) }}</span>{% else %}<span class="pill early">cost ${{ '%.0f'|format(-t.saved) }} more</span>{% endif %}
         <div class="meta">{{ t.date }}{% if t.depart_time %} · {{ t.dep_txt or t.depart_time }}{% if t.arr_txt %} → {{ t.arr_txt }}{% endif %}{% endif %}{% if t.flight_no %} · flight {{ t.flight_no }}{% endif %}{% if t.confirmation %} · {{ t.confirmation }}{% endif %}</div>
         {% if t.days_later %}<div class="meta"><span class="pill nextday">+{{ t.days_later }} day{{ 's' if t.days_later > 1 }} · lands {{ t.arr_day }}</span></div>{% endif %}
         {% if t.layover %}<div class="meta" style="{{ 'color:var(--gold);font-weight:600' if t.layover.long or t.layover.overnight }}">⏱ Then a {{ t.layover.txt }} layover in {{ t.layover.airport }}{% if t.layover.overnight %} (overnight){% endif %} before the next flight</div>{% endif %}
@@ -38,8 +40,8 @@
         </div>
         {% endif %}
         <form method="post" class="money" style="margin-top:10px"><input type="hidden" name="action" value="update"><input type="hidden" name="id" value="{{ t.id }}">
-          <label>Cash fare $<input name="cash_fare" type="number" inputmode="decimal" step="0.01" value="{{ '%.2f'|format(t.cash_fare) }}" style="{{ 'border-color:var(--gold)' if not t.cash_fare }}" onchange="this.form.submit()"></label>
-          <label>You paid $<input name="paid" type="number" inputmode="decimal" step="0.01" value="{{ '%.2f'|format(t.paid) }}" onchange="this.form.submit()"></label>
+          <label>Without GoWild $<input name="cash_fare" type="number" inputmode="decimal" step="0.01" value="{{ '%.2f'|format(t.cash_fare) }}" style="{{ 'border-color:var(--gold)' if not t.cash_fare }}" onchange="this.form.submit()"></label>
+          <label>Paid with GoWild $<input name="paid" type="number" inputmode="decimal" step="0.01" value="{{ '%.2f'|format(t.paid) }}" onchange="this.form.submit()"></label>
         </form>
       </div>
       <div class="side">
@@ -64,8 +66,8 @@
       <label>To <input name="dest" required value="{{ prefill.dest or '' }}" autocapitalize="characters"></label>
       <label>Flight <input name="flight_no" inputmode="numeric" value="{{ prefill.flight_no or '' }}"></label>
       <label>Confirmation <input name="confirmation" autocapitalize="characters"></label>
-      <label>Cash fare $ <input name="cash_fare" type="number" inputmode="decimal" step="0.01" value="{{ prefill.cash_fare or '' }}"></label>
-      <label>You paid $ <input name="paid" type="number" inputmode="decimal" step="0.01" value="{{ prefill.paid or '' }}"></label>
+      <label>Without GoWild $ <input name="cash_fare" type="number" inputmode="decimal" step="0.01" value="{{ prefill.cash_fare or '' }}"></label>
+      <label>Paid with GoWild $ <input name="paid" type="number" inputmode="decimal" step="0.01" value="{{ prefill.paid or '' }}"></label>
     </div>
     <div class="actions" style="margin-top:14px"><button class="big">Add trip</button></div>
   </form>
