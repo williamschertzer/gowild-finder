@@ -27,7 +27,7 @@
     {% for f in flights %}{% with book_url=f.url, origin=f.origin, dest=f.dest, date=f.date %}{% include "_flight.html" %}{% endwith %}{% endfor %}
   </div>
   {% else %}
-  <p class="muted" style="margin:0">{% if front %}No GoWild flights with {{ front_modes[front] | lower }} found for tomorrow.{% else %}No GoWild flights found for tomorrow yet.{% endif %}</p>
+  <p class="muted" style="margin:0">{% if front or stops %}No GoWild flights for tomorrow with these filters ({{ stop_modes[stops] | lower }}{% if front %}, {{ front_modes[front] | lower }}{% endif %}).{% else %}No GoWild flights found for tomorrow yet.{% endif %}</p>
   {% endif %}
   {% if flights %}<p class="muted small">Times are local to each airport; total time is door to door, layovers included.</p>{% endif %}
   {% if empty_routes %}<p class="muted small" style="margin-bottom:0">No GoWild seats: {% for r in empty_routes %}{{ r.origin }}→{{ r.dest }}{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}

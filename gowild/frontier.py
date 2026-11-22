@@ -22,7 +22,7 @@ from .browser import ProfileLock, profile_path
 
 SEARCH_URL = "https://booking.flyfrontier.com/Flight/InternalSelect?o1={o}&d1={d}&dd1={dd}&ADT=1&mon=true&promo="
 DEBUG_DIR = os.path.join(os.path.dirname(__file__), "..", "debug")
-MAX_TABS = 3  # searches loaded at once, each in its own tab; more makes a bot check likelier
+MAX_TABS = 6  # searches loaded at once, each in its own browser window; more makes a bot check likelier
 DEFAULT_TABS = 2
 
 

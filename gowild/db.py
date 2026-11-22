@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS searches (
     weekdays TEXT NOT NULL DEFAULT '0123456', -- Mon=0 .. Sun=6
     include_blackouts INTEGER NOT NULL DEFAULT 1,
     position INTEGER NOT NULL DEFAULT 0,
-    active INTEGER NOT NULL DEFAULT 1
+    active INTEGER NOT NULL DEFAULT 1,
+    auto INTEGER NOT NULL DEFAULT 0,        -- searched automatically on a schedule
+    auto_hours INTEGER NOT NULL DEFAULT 3   -- how often, when auto is on
 );
 CREATE TABLE IF NOT EXISTS checks (
     origin TEXT NOT NULL,
@@ -60,6 +62,10 @@ def connect(path: str | None = None) -> sqlite3.Connection:
         conn.commit()
     if "position" not in cols:  # user-chosen order; 0 everywhere falls back to newest first
         conn.execute("ALTER TABLE searches ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+    if "auto" not in cols:  # per-search automatic checks
+        conn.execute("ALTER TABLE searches ADD COLUMN auto INTEGER NOT NULL DEFAULT 0")
+        conn.execute("ALTER TABLE searches ADD COLUMN auto_hours INTEGER NOT NULL DEFAULT 3")
         conn.commit()
     if "arrive" not in {r["name"] for r in conn.execute("PRAGMA table_info(trips)")}:
         conn.execute("ALTER TABLE trips ADD COLUMN arrive TEXT")

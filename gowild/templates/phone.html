@@ -36,7 +36,7 @@
     <form method="post" action="{{ url_for('alerts') }}"><input type="hidden" name="action" value="test"><button class="ghost">Send a test</button></form>
     {% if sent == 'ok' %}<span class="pill gw">Test sent</span>{% elif sent == 'fail' %}<span class="pill early">Couldn't reach ntfy.sh</span>{% endif %}
   </div>
-  <p class="muted small" style="margin-bottom:0">{% if scheduled %}Automatic checks are on: every 3 hours while the Mac is awake, plus tomorrow's flights from noon.{% else %}Automatic checks are off. Run <code>bash scripts/install-mac.sh</code> again to turn them on.{% endif %} Alerts go through ntfy's public server and only say the route, date and number of flights. Anyone who knew the topic name could read them, so keep it to yourself.</p>
+  <p class="muted small" style="margin-bottom:0">{% if scheduled %}Automatic checks are on for some searches, at the interval you picked for each.{% else %}No search has automatic checks on, so alerts only come from checks you start. Turn them on per search on the <a href="{{ url_for('index') }}">Saved searches</a> page.{% endif %} Alerts go through ntfy's public server and only say the route, date and number of flights. Anyone who knew the topic name could read them, so keep it to yourself.</p>
 </div>
 <div class="card">
   <h2>If the iPhone shows a blank page</h2>

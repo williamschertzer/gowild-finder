@@ -123,3 +123,22 @@ def test_missing_fares_are_looked_up_by_journey(tmp_path):
     db.import_trips(conn, mytrips.parse_pages([("u", TRIP_PAGE)]))
     assert db.trips_missing_fares(conn, "2026-11-01") == [("IAD", "ONT", "2026-11-28")]
     assert db.trips_missing_fares(conn, "2026-12-01") == []  # past trips can't be searched
+
+
+def test_stops_filter_on_a_search(tmp_path):
+    path = str(tmp_path / "st.db")
+    conn = db.connect(path)
+    nonstop = {"depart": "2026-12-12T09:23", "arrive": "2026-12-12T11:32", "flight_numbers": ["3215"], "gowild": True,
+               "gowild_price": 98.99, "legs": [{"flight": "3215", "from": "ATL", "to": "LAX", "depart": "2026-12-12T09:23",
+                                                "arrive": "2026-12-12T11:32"}], "layovers": [], "minutes": 309}
+    db.save_check(conn, "ATL", "LAX", "2026-12-12", "ok", frontier.find_flights([CONNECTING]) + [nonstop])
+    client = create_app(path).test_client()
+    client.post("/searches", data={"name": "LA", "origins": "ATL", "destinations": "LAX", "start_date": "2026-12-01",
+                                   "end_date": "2026-12-31", "weekdays": list("0123456")})
+    every = client.get("/searches/1").get_data(as_text=True)
+    assert "F9 3215" in every and "layover in IAH" in every and "Nonstop only" in every
+    direct = client.get("/searches/1?stops=0").get_data(as_text=True)
+    assert "F9 3215" in direct and "layover in IAH" not in direct
+    assert "layover in IAH" not in client.get("/searches/1").get_data(as_text=True)  # remembered
+    assert "layover in IAH" in client.get("/searches/1?stops=1").get_data(as_text=True)
+    assert "layover in IAH" in client.get("/searches/1?stops=").get_data(as_text=True)

@@ -12,5 +12,7 @@
       {% endfor %}
     </div>
     <div class="days" style="margin-top:0"><label><input type="checkbox" name="include_blackouts" value="1" {{ 'checked' if not s or s.include_blackouts }}>Also check blackout dates</label></div>
+    <div class="days" style="margin-top:0;align-items:center"><label><input type="checkbox" name="auto" value="on" {{ 'checked' if s and s.auto }}>Check automatically</label>
+      <label style="border:0;padding:0">every <select name="auto_hours" style="width:auto">{% for h in auto_choices %}<option value="{{ h }}" {{ 'selected' if (s.auto_hours if s else 3) == h }}>{{ h }} hour{{ 's' if h > 1 }}</option>{% endfor %}</select></label></div>
     <div class="actions"><button class="big">{{ submit }}</button></div>
   </form>

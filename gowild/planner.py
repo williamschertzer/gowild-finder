@@ -46,3 +46,18 @@ def tomorrow_tasks(searches, today: date | None = None):
         if o != dst
     }
     return [(o, dst, d) for o, dst in sorted(routes)]
+
+
+AUTO_CHOICES = [1, 2, 3, 6, 12, 24]  # hours between automatic checks of a search
+
+
+def auto_tasks(conn, searches, today: date | None = None):
+    """Lookups the schedule should run now: for each search with automatic checks on, its dates
+    that haven't been checked within that search's own interval. The schedule wakes every
+    15 minutes, so a search set to every 3 hours is re-checked about every 3 hours.
+    Tomorrow is the first date of every search, so it's covered too."""
+    tasks = set()
+    for s in searches:
+        if s.get("auto"):
+            tasks.update(plan(conn, [s], s.get("auto_hours") or 3, today))
+    return sorted(tasks, key=lambda t: (t[2], t[0], t[1]))

@@ -2,13 +2,15 @@
 import calendar
 import json
 import os
+import re
 import subprocess
 import sys
+import time
 from datetime import date, datetime, timedelta
 
 from flask import Flask, abort, make_response, redirect, render_template, request, url_for
 
-from . import db, notify, phone, rules, seats, value
+from . import db, notify, phone, planner, rules, seats, value
 from .db import split_codes
 from .frontier import DEFAULT_TABS, MAX_TABS, filter_front, search_url
 
@@ -94,6 +96,47 @@ def front_url(mode):
     return url_for(request.endpoint, **(request.view_args or {}), **args, front=mode)
 
 
+STOP_MODES = {"": "Any stops", "0": "Nonstop only", "1": "Up to 1 stop"}
+
+
+def stop_count(f) -> int | None:
+    """Stops on an itinerary: from its legs, else Frontier's 'Nonstop' / '1 Stop DEN' text,
+    else its flight numbers (one per leg)."""
+    if f.get("legs"):
+        return len(f["legs"]) - 1
+    text = str(f.get("stops") or "").lower()
+    if "nonstop" in text:
+        return 0
+    m = re.match(r"(\d+)\s*stop", text)
+    if m:
+        return int(m.group(1))
+    return len(f["flight_numbers"]) - 1 if f.get("flight_numbers") else None
+
+
+def _stops_mode(c):
+    """The stops filter: from the link the user tapped, else the last one they picked."""
+    mode = request.args.get("stops")
+    if mode is not None and mode in STOP_MODES:
+        db.set_setting(c, "stops", mode)
+        return mode
+    mode = db.get_setting(c, "stops", "")
+    return mode if mode in STOP_MODES else ""
+
+
+def stops_url(mode):
+    """This page's URL with the stops filter set to mode (other filters kept)."""
+    args = {k: v for k, v in request.args.items() if k != "stops"}
+    return url_for(request.endpoint, **(request.view_args or {}), **args, stops=mode)
+
+
+def _apply_stops(check, mode):
+    """Keep flights with at most `mode` stops; ones we can't count are kept, not hidden."""
+    if mode:
+        limit = int(mode)
+        check["flights"] = [f for f in check["flights"] if (stop_count(f) if stop_count(f) is not None else 0) <= limit]
+    return check
+
+
 def _apply_front(check, mode):
     """Drop flights without the chosen front seats; remember how many we couldn't tell about."""
     check["had_gowild"] = bool(check["flights"])
@@ -136,6 +179,8 @@ def month_grid(start: date, end: date, by_date: dict):
 
 
 _jobs = {}  # kind -> Popen; one of each kind at a time
+_stopped_at = {}  # kind -> when Stop was last pressed
+STOP_GRACE = 5  # seconds after a Stop when a start of the same kind is taken as a stray click
 
 
 def _running(kind):
@@ -144,8 +189,10 @@ def _running(kind):
 
 
 def _spawn(kind, *args):
-    """Start a background run unless one of the same kind is still going."""
-    if _running(kind):
+    """Start a background run unless one of the same kind is still going, or you just
+    stopped one: Stop reloads the page, and a second click (or a double-click) used to land
+    on a Check now button that the reload had moved under the pointer."""
+    if _running(kind) or time.time() - _stopped_at.get(kind, 0) < STOP_GRACE:
         return False
     with open(_log_path(kind), "w") as fh:
         _jobs[kind] = subprocess.Popen(
@@ -156,6 +203,7 @@ def _spawn(kind, *args):
 
 def _stop(kind):
     """Ask a run to stop; it closes its browser on the way out."""
+    _stopped_at[kind] = time.time()
     p = _jobs.get(kind)
     if p is not None and p.poll() is None:
         p.terminate()
@@ -187,6 +235,24 @@ def _job(kind):
     return {"kind": kind, "running": _running(kind), "log": "\n".join(lines[-25:])}
 
 
+AUTO_AGENT = os.path.expanduser("~/Library/LaunchAgents/local.gowild-finder.auto.plist")
+
+
+def _scheduled() -> bool:
+    return os.path.exists(AUTO_AGENT)
+
+
+def _last_auto():
+    """When an automatic check last actually searched (not a run skipped because they're off)."""
+    try:
+        with open(_log_path("auto")) as fh:
+            text = fh.read()
+        stamps = re.findall(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) Automatic check:", text, re.M)
+        return datetime.fromisoformat(stamps[-1]) if stamps else None
+    except OSError:
+        return None
+
+
 def _search_fields(f):
     """Form values for a saved search, in column order."""
     weekdays = "".join(sorted(f.getlist("weekdays"))) or "0123456"
@@ -194,6 +260,7 @@ def _search_fields(f):
         f["name"] or f"{f['origins']} to {f['destinations']}", ",".join(split_codes(f["origins"])),
         ",".join(split_codes(f["destinations"])), f["start_date"], f["end_date"], weekdays,
         1 if f.get("include_blackouts") else 0,
+        1 if f.get("auto") == "on" else 0, int(f.get("auto_hours") or 3) if int(f.get("auto_hours") or 3) in planner.AUTO_CHOICES else 3,
     )
 
 
@@ -241,7 +308,7 @@ def create_app(db_path=None, phone_access=False):
         return render_template(
             "phone.html", urls=urls, qr=phone.qr_svg(urls[0]) if urls else None, listening=listening,
             alerts=notify.enabled(c), topic=t, topic_url=f"{notify.SERVER}/{t}",
-            scheduled=os.path.exists(os.path.expanduser("~/Library/LaunchAgents/local.gowild-finder.auto.plist")),
+            scheduled=_scheduled() and any(r["auto"] for r in c.execute("SELECT auto FROM searches")),
             sent=request.args.get("sent"), ts_url=ts_url, ts_qr=phone.qr_svg(ts_url) if ts_url else None,
         )
 
@@ -259,7 +326,7 @@ def create_app(db_path=None, phone_access=False):
 
     @app.context_processor
     def globals_():
-        return {"pass_name": rules.PASS_NAME, "today": date.today(), "is_local": is_local(), "front_url": front_url}
+        return {"pass_name": rules.PASS_NAME, "today": date.today(), "is_local": is_local(), "front_url": front_url, "stops_url": stops_url, "stop_modes": STOP_MODES, "auto_choices": planner.AUTO_CHOICES}
 
     @app.get("/")
     def index():
@@ -274,18 +341,30 @@ def create_app(db_path=None, phone_access=False):
             rows.append(s)
         default_end = min(date.today() + timedelta(days=60), rules.PASS_END)
         tabs = int(db.get_setting(c, "tabs", DEFAULT_TABS))
-        return render_template("index.html", searches=rows, default_end=default_end, job=_job("check"), at_once=tabs, max_tabs=MAX_TABS)
+        auto = {"scheduled": _scheduled(), "last": _last_auto(), "choices": planner.AUTO_CHOICES, "any": any(r["auto"] for r in rows)}
+        return render_template("index.html", searches=rows, default_end=default_end, job=_job("check"), at_once=tabs, max_tabs=MAX_TABS, auto=auto)
+
+    @app.post("/searches/<int:sid>/auto")
+    def search_auto(sid):
+        """Turn automatic checks on or off for one search, and how often they run."""
+        f = request.form
+        hours = int(f.get("auto_hours") or 3)
+        c = conn()
+        c.execute("UPDATE searches SET auto=?, auto_hours=? WHERE id=?",
+                  (1 if f.get("auto") == "on" else 0, hours if hours in planner.AUTO_CHOICES else 3, sid))
+        c.commit()
+        return redirect(url_for("index") + f"#s{sid}")
 
     @app.post("/settings/tabs")
     def set_tabs():
         db.set_setting(conn(), "tabs", max(1, min(MAX_TABS, int(request.form.get("tabs", 1)))))
-        return redirect(url_for("index"))
+        return redirect(url_for("index") + "#settings")
 
     @app.post("/searches")
     def add_search():
         c = conn()
         c.execute(
-            "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays, include_blackouts, position) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO searches (name, origins, destinations, start_date, end_date, weekdays, include_blackouts, auto, auto_hours, position) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (*_search_fields(request.form), db.top_position(c)),
         )
         c.commit()
@@ -299,7 +378,7 @@ def create_app(db_path=None, phone_access=False):
             abort(404)
         if request.method == "POST":
             c.execute(
-                "UPDATE searches SET name=?, origins=?, destinations=?, start_date=?, end_date=?, weekdays=?, include_blackouts=? WHERE id=?",
+                "UPDATE searches SET name=?, origins=?, destinations=?, start_date=?, end_date=?, weekdays=?, include_blackouts=?, auto=?, auto_hours=? WHERE id=?",
                 (*_search_fields(request.form), sid),
             )
             c.commit()
@@ -336,8 +415,8 @@ def create_app(db_path=None, phone_access=False):
     def show_search(sid):
         c = conn()
         s = dict(c.execute("SELECT * FROM searches WHERE id=?", (sid,)).fetchone())
-        front = _front_mode(c)
-        all_checks = [_apply_front(_decorate(x), front) for x in db.get_checks(c, split_codes(s["origins"]), split_codes(s["destinations"]), s["start_date"], s["end_date"])]
+        front, stops = _front_mode(c), _stops_mode(c)
+        all_checks = [_apply_stops(_apply_front(_decorate(x), front), stops) for x in db.get_checks(c, split_codes(s["origins"]), split_codes(s["destinations"]), s["start_date"], s["end_date"])]
         future = date.today().isoformat()
         # one tab per airport pair, plus "All", when the search has more than one pair
         routes = [(o, d) for o in split_codes(s["origins"]) for d in split_codes(s["destinations"]) if o != d]
@@ -356,7 +435,7 @@ def create_app(db_path=None, phone_access=False):
         hits = [x for x in checks if x["flights"] and x["date"] > future]
         all_dates = len({x["date"] for x in all_checks if x["flights"] and x["date"] > future})
         return render_template("search.html", s=s, months=month_grid(start, end, by_date), hits=hits, job=_job("check"),
-                               route_tabs=tabs, route=route, all_dates=all_dates, front=front, front_modes=FRONT_MODES,
+                               route_tabs=tabs, route=route, all_dates=all_dates, front=front, front_modes=FRONT_MODES, stops=stops,
                                unknown_front=sum(x["unknown_front"] for x in checks if x["date"] > future))
 
     @app.post("/run/<kind>")
@@ -389,7 +468,8 @@ def create_app(db_path=None, phone_access=False):
     @app.post("/stop/<kind>")
     def stop(kind):
         _stop(kind)
-        return redirect(request.referrer or url_for("index"))
+        # back to the run's card, not the top of the page where the Check now buttons are
+        return redirect((request.referrer or url_for("index")).split("#")[0] + "#job")
 
     @app.get("/job/<kind>")
     def job_status(kind):
@@ -404,8 +484,8 @@ def create_app(db_path=None, phone_access=False):
         searches = db.ordered_searches(c)
         picked = db.tomorrow_searches(c, searches)
         routes = {(o, d) for s in picked for o in split_codes(s["origins"]) for d in split_codes(s["destinations"])}
-        front = _front_mode(c)
-        rows = [_apply_front(_decorate(dict(r, flights=json.loads(r["flights"]))), front) for r in c.execute("SELECT * FROM checks WHERE date=?", (t,))
+        front, stops = _front_mode(c), _stops_mode(c)
+        rows = [_apply_stops(_apply_front(_decorate(dict(r, flights=json.loads(r["flights"]))), front), stops) for r in c.execute("SELECT * FROM checks WHERE date=?", (t,))
                 if (r["origin"], r["dest"]) in routes]
         flights = sorted(
             ({**f, "origin": r["origin"], "dest": r["dest"], "url": r["url"], "date": t} for r in rows for f in r["flights"]),
@@ -414,7 +494,7 @@ def create_app(db_path=None, phone_access=False):
         checked = max((r["checked_at"] for r in rows), default=None)
         empty_routes = [r for r in rows if not r["had_gowild"]]
         return render_template("tomorrow.html", day=date.fromisoformat(t), flights=flights, checked=checked, empty_routes=empty_routes, job=_job("tomorrow"),
-                               searches=searches, picked={s["id"] for s in picked}, front=front, front_modes=FRONT_MODES,
+                               searches=searches, picked={s["id"] for s in picked}, front=front, front_modes=FRONT_MODES, stops=stops,
                                unknown_front=sum(r["unknown_front"] for r in rows))
 
     @app.route("/value", methods=["GET", "POST"])

@@ -1,4 +1,7 @@
-{# big-front-seat filter; expects front, front_modes, unknown_front #}
+{# flight filters: stops and big front seats; expects stops, front, front_modes, unknown_front #}
+<nav class="tabs" aria-label="Stops">
+  {% for key, label in stop_modes.items() %}<a href="{{ stops_url(key) }}" class="{{ 'on' if stops == key }}">{{ label }}</a>{% endfor %}
+</nav>
 <nav class="tabs" aria-label="Front seats">
   {% for key, label in front_modes.items() %}<a href="{{ front_url(key) }}" class="{{ 'on' if front == key }}">{{ label }}</a>{% endfor %}
 </nav>

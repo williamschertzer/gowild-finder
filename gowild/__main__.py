@@ -6,7 +6,7 @@
   seats      read paid seat prices for a booked trip (--trip ID); you log in yourself
   import     add your past and upcoming Frontier trips to the trip log; you log in yourself
   fares      look up the cash fare (without GoWild) for upcoming logged trips that don't have one
-  auto       what the scheduler runs: a check, plus tomorrow's check from noon on
+  auto       what the scheduler runs every 15 minutes: searches with automatic checks on, when due
   serve      open the web app at http://127.0.0.1:5050 (--phone to allow your iPhone)
 """
 import argparse
@@ -51,7 +51,7 @@ def run_lookups(conn, tasks, headless, limit, profile="browser-profile", show=Fa
                 done += 1
                 print(f"[{done}/{len(tasks)}] {o}-{d} {day}: {status}, {len(flights)} GoWild", flush=True)
             if blocked:
-                tip = " Set searches at once back to 1 on the Saved searches page." if br.tabs > 1 else ""
+                tip = " Set browser windows at once back to 1 on the Saved searches page." if br.tabs > 1 else ""
                 print(f"Stopping: {blocked}. Try again later, or run without --headless.{tip}", flush=True)
                 alert()
                 return 2
@@ -120,7 +120,7 @@ def main(argv=None):
     p.add_argument("--ids", help="only these saved searches, by id (e.g. 1,3)")
     p.add_argument("--max", type=int, default=40, help="max lookups per run (default 40)")
     p.add_argument("--max-age", type=float, default=12, help="re-check dates older than this many hours")
-    p.add_argument("--tabs", type=int, choices=range(1, MAX_TABS + 1), help="searches to load at once (default: the app's setting)")
+    p.add_argument("--tabs", type=int, choices=range(1, MAX_TABS + 1), help="browser windows searching at once (default: the app's setting)")
     p.add_argument("--headless", action="store_true", help="no browser window at all (more likely to be blocked)")
     p.add_argument("--show-browser", action="store_true", help="show the browser window instead of keeping it minimized")
     p.add_argument("--phone", action="store_true", help="serve: also allow your paired iPhone on the same Wi-Fi")
@@ -155,11 +155,15 @@ def main(argv=None):
         return 1
 
     if a.command == "auto":
-        code = run_lookups(conn, planner.plan(conn, searches, a.max_age), a.headless, a.max, show=a.show_browser, tabs=a.tabs)
-        if datetime.now().hour >= 12 and code == 0:  # tomorrow's GoWild seats are open by now
-            picked = db.tomorrow_searches(conn, all_searches)
-            code = run_lookups(conn, planner.tomorrow_tasks(picked), a.headless, a.max, profile="browser-profile-tomorrow", show=a.show_browser, tabs=a.tabs)
-        return code
+        on = [x for x in all_searches if x["auto"]]
+        if not on:
+            print(f"{datetime.now():%Y-%m-%d %H:%M} No searches have automatic checks on; nothing searched.")
+            return 0
+        tasks = planner.auto_tasks(conn, on)
+        if not tasks:
+            return 0  # everything is fresh enough; quiet, since this runs every 15 minutes
+        print(f"{datetime.now():%Y-%m-%d %H:%M} Automatic check: " + ", ".join(x["name"] for x in on), flush=True)
+        return run_lookups(conn, tasks, a.headless, a.max, show=a.show_browser, tabs=a.tabs)
     if a.command == "tomorrow":
         tasks = planner.tomorrow_tasks(searches if a.ids else db.tomorrow_searches(conn, searches))
         # its own browser, so it can run while a long check is going

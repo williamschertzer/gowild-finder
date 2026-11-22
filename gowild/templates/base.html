@@ -64,6 +64,8 @@ button.ghost, .btn.ghost { background:transparent; color:var(--ink); border-colo
 .legs .layover { color:var(--muted); font-style:italic; padding:6px 0 }
 .legs .layover::before { content:"⏱ "; font-style:normal }
 .legs .layover.long { color:var(--gold); font-weight:600 }
+.auto-row { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:6px; font-size:17px; color:var(--muted) }
+.auto-row label { display:flex; gap:8px; align-items:center } .auto-row select { width:auto; min-height:40px; padding:6px 10px; font-size:17px }
 .group-head { font-weight:650; margin:18px 0 8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap }
 /* calendar */
 .legend { display:flex; gap:18px; flex-wrap:wrap; font-size:17px; margin-bottom:14px } .legend i { display:inline-block; width:16px; height:16px; border-radius:4px; margin-right:6px; vertical-align:-2px }
@@ -113,6 +115,16 @@ pre { white-space:pre-wrap; font-size:16px; background:var(--bg); padding:12px; 
   <span class="pass">{{ pass_name }} pass</span>
 </header>
 <main>{% block body %}{% endblock %}</main>
+<script>
+// Buttons that start a search ignore clicks in the first moment after a page loads, so a
+// double-click (or a click meant for the page before) can't start one by accident.
+(function () {
+  const loaded = Date.now();
+  document.addEventListener("submit", e => {
+    if (/\/(run|trips\/fares)/.test(e.target.getAttribute("action") || "") && Date.now() - loaded < 1500) e.preventDefault();
+  }, true);
+})();
+</script>
 <nav class="tabbar">{% for ep, label, icon in tabs %}<a href="{{ url_for(ep) }}" class="{{ 'on' if active == ep }}"><span>{{ icon }}</span>{{ label }}</a>{% endfor %}</nav>
 </body>
 </html>

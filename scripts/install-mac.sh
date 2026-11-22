@@ -42,7 +42,7 @@ open http://127.0.0.1:5050/
 LAUNCH
 chmod +x "$APP/Contents/MacOS/launch"
 
-echo "Scheduling automatic checks every 3 hours..."
+echo "Installing the automatic-check schedule (wakes every 15 minutes; only searches you switch on in the app)..."
 AGENT="$HOME/Library/LaunchAgents/local.gowild-finder.auto.plist"
 mkdir -p "$HOME/Library/LaunchAgents"
 launchctl unload "$AGENT" 2>/dev/null || true
@@ -55,7 +55,7 @@ cat > "$AGENT" <<PLIST
     <string>$REPO/.venv/bin/python</string><string>-u</string><string>-m</string><string>gowild</string><string>auto</string>
   </array>
   <key>WorkingDirectory</key><string>$REPO</string>
-  <key>StartInterval</key><integer>10800</integer>
+  <key>StartInterval</key><integer>900</integer>
   <key>StandardOutPath</key><string>$REPO/last-auto.log</string>
   <key>StandardErrorPath</key><string>$REPO/last-auto.log</string>
 </dict></plist>
@@ -66,4 +66,4 @@ echo
 echo "Done. Open Finder > Applications (your home folder's) > GoWild Finder,"
 echo "or press Cmd+Space and type GoWild. Drag it to the Dock to keep it handy."
 echo "To stop the app's server: pkill -f 'gowild serve'"
-echo "To turn off automatic checks: launchctl unload \"$AGENT\" && rm \"$AGENT\""
+echo "Automatic checks: switch them on, and pick how often, per search on the Saved searches page."

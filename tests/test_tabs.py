@@ -60,8 +60,8 @@ def test_a_bot_check_in_one_tab_saves_the_others_then_stops(conn, capsys):
 
 def test_tabs_setting_is_clamped(conn):
     db.set_setting(conn, "tabs", 9)
-    cli.run_lookups(conn, [("DEN", "MCO", f"2026-11-{d:02d}") for d in range(10, 16)], True, 40)
-    assert [len(b) for b in FakeBrowser.calls] == [3, 3]
+    cli.run_lookups(conn, [("DEN", "MCO", f"2026-11-{d:02d}") for d in range(10, 18)], True, 40)
+    assert [len(b) for b in FakeBrowser.calls] == [6, 2]  # at most 6 windows at once
 
 
 def test_real_browser_loads_tabs_side_by_side(tmp_path, monkeypatch):
@@ -106,9 +106,12 @@ def test_saved_searches_page_sets_searches_at_once(tmp_path):
                                    "start_date": "2026-12-01", "end_date": "2026-12-10"})
     page = client.get("/").get_data(as_text=True)
     assert "Check all now" in page and '<option value="2" selected>' in page
-    client.post("/settings/tabs", data={"tabs": "7"})
-    assert db.get_setting(db.connect(str(tmp_path / "w.db")), "tabs") == "3"
-    assert "about 7 minutes" in client.get("/").get_data(as_text=True)
+    assert "Browser windows at once" in page and '<option value="6"' in page
+    client.post("/settings/tabs", data={"tabs": "5"})
+    assert db.get_setting(db.connect(str(tmp_path / "w.db")), "tabs") == "5"
+    client.post("/settings/tabs", data={"tabs": "9"})
+    assert db.get_setting(db.connect(str(tmp_path / "w.db")), "tabs") == "6"
+    assert "about 3 minutes" in client.get("/").get_data(as_text=True)
 
 
 def test_browser_window_starts_minimized_unless_shown(monkeypatch, tmp_path):
