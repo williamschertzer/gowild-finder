@@ -17,20 +17,29 @@ START_URL = "https://www.flyfrontier.com/"
 PROFILE = "account-profile"
 
 
-def capture(keep, instructions: list[str], timeout_min: float = 15) -> list:
-    """Collect JSON responses for which keep(body_text) is true until the window closes."""
+def capture(keep, instructions: list[str], timeout_min: float = 15, pages: list | None = None) -> list:
+    """Collect JSON responses for which keep(body_text) is true until the window closes.
+
+    Some Frontier pages (a trip's details, for one) are built on the server with the data
+    inside the HTML, so pass a list as `pages` to also collect (url, html) for each
+    flyfrontier.com page you open.
+    """
     from playwright.sync_api import sync_playwright
 
     blobs = []
 
     def on_response(resp):
-        if "json" in (resp.headers.get("content-type") or ""):
-            try:
+        ctype = resp.headers.get("content-type") or ""
+        try:
+            if "json" in ctype:
                 body = resp.text()
                 if keep(body):
                     blobs.append(json.loads(body))
-            except Exception:
-                pass
+            elif pages is not None and "html" in ctype and resp.request.resource_type == "document" \
+                    and re.match(r"https://[\w.-]*flyfrontier\.com/", resp.url):
+                pages.append((resp.url, resp.text()))
+        except Exception:
+            pass  # redirects and closed pages have no body
 
     with ProfileLock(PROFILE, wait_min=1), sync_playwright() as pw:
         ctx = pw.chromium.launch_persistent_context(profile_path(PROFILE), headless=False, viewport={"width": 1280, "height": 900})

@@ -15,7 +15,7 @@ import os
 import random
 import re
 import time
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import quote
 
 from .browser import ProfileLock, profile_path
@@ -95,9 +95,50 @@ def _is_flight(d: dict) -> bool:
 
 
 def _times(d):
-    deps = [v for x in _walk(d) for k, v in x.items() if _DEP.search(k) and isinstance(v, str) and _DT.search(v)]
-    arrs = [v for x in _walk(d) for k, v in x.items() if _ARR.search(k) and isinstance(v, str) and _DT.search(v)]
+    """Local departure and arrival. Keys ending in Utc are skipped: mixing them in made
+    arrivals come out in UTC (an 11:32 AM landing in LA read as 7:32 PM)."""
+    def pick(rx):
+        return [v for x in _walk(d) for k, v in x.items()
+                if rx.search(k) and "utc" not in k.lower() and isinstance(v, str) and _DT.search(v)]
+    deps, arrs = pick(_DEP), pick(_ARR)
     return (min(deps) if deps else None), (max(arrs) if arrs else None)
+
+
+def _minutes_between(a: str | None, b: str | None) -> int | None:
+    try:
+        return round((datetime.fromisoformat(b.replace("Z", "+00:00")) - datetime.fromisoformat(a.replace("Z", "+00:00"))).total_seconds() / 60)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _legs(d: dict) -> list[dict]:
+    """Each flight of an itinerary, in order: number, airports, local times."""
+    raw = next((x["legs"] for x in _walk(d) if isinstance(x.get("legs"), list) and x["legs"]
+                and all(isinstance(l, dict) for l in x["legs"])), [])
+    legs = []
+    for l in raw:
+        dep, arr = l.get("departureDate"), l.get("arrivalDate")
+        if not (isinstance(dep, str) and _DT.search(dep) and isinstance(arr, str) and _DT.search(arr)):
+            return []
+        legs.append({
+            "flight": str(l.get("flightNumber") or ""), "from": l.get("departureStation"), "to": l.get("arrivalStation"),
+            "depart": dep[:16], "arrive": arr[:16], "depart_utc": l.get("departureDateUtc"), "arrive_utc": l.get("arrivalDateUtc"),
+        })
+    return legs
+
+
+def _itinerary(legs: list[dict]) -> tuple[list[dict], int | None]:
+    """(layovers, total minutes door to door) from the legs.
+
+    A layover is at one airport, so its local times share a time zone and subtracting
+    them is exact. The total crosses time zones, so it needs Frontier's UTC times.
+    """
+    layovers = []
+    for a, b in zip(legs, legs[1:]):
+        layovers.append({"airport": a["to"], "minutes": _minutes_between(a["arrive"], b["depart"]),
+                         "overnight": b["depart"][:10] > a["arrive"][:10]})
+    total = _minutes_between(legs[0]["depart_utc"], legs[-1]["arrive_utc"]) if legs else None
+    return layovers, total
 
 
 def parse_flight(d: dict) -> dict:
@@ -108,7 +149,9 @@ def parse_flight(d: dict) -> dict:
     disc = _num(_first(d, re.compile(r"discountDenFare|denFare|discount.*fare", re.I), (int, float, str)))
     nums = sorted({str(x["flightNumber"]) for x in _walk(d) if x.get("flightNumber") is not None})
     stops = _first(d, re.compile(r"^stops(Text)?$", re.I), (int, str))
-    dep, arr = _times(d)
+    legs = _legs(d)
+    layovers, total = _itinerary(legs)
+    dep, arr = (legs[0]["depart"], legs[-1]["arrive"]) if legs else _times(d)
     available = bool(gw_flag) if gw_flag is not None else (gw_price is not None and gw_price > 0)
     if gw_seats is not None and gw_seats <= 0:
         available = False
@@ -122,6 +165,9 @@ def parse_flight(d: dict) -> dict:
         "gowild_seats": int(gw_seats) if gw_seats is not None else None,
         "standard_fare": std,
         "discount_den_fare": disc,
+        "legs": [{k: l[k] for k in ("flight", "from", "to", "depart", "arrive")} for l in legs],
+        "layovers": layovers,
+        "minutes": total,
     }
 
 

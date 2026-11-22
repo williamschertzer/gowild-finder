@@ -28,7 +28,9 @@
     <div class="item">
       <div class="main">
         <b>{{ t.origin }} → {{ t.dest }}</b> <span class="pill gw">saved ${{ '%.0f'|format(t.saved) }}</span>
-        <div class="meta">{{ t.date }}{% if t.depart_time %} · {{ t.depart_time }}{% endif %}{% if t.flight_no %} · flight {{ t.flight_no }}{% endif %}{% if t.confirmation %} · {{ t.confirmation }}{% endif %}</div>
+        <div class="meta">{{ t.date }}{% if t.depart_time %} · {{ t.dep_txt or t.depart_time }}{% if t.arr_txt %} → {{ t.arr_txt }}{% endif %}{% endif %}{% if t.flight_no %} · flight {{ t.flight_no }}{% endif %}{% if t.confirmation %} · {{ t.confirmation }}{% endif %}</div>
+        {% if t.days_later %}<div class="meta"><span class="pill nextday">+{{ t.days_later }} day{{ 's' if t.days_later > 1 }} · lands {{ t.arr_day }}</span></div>{% endif %}
+        {% if t.layover %}<div class="meta" style="{{ 'color:var(--gold);font-weight:600' if t.layover.long or t.layover.overnight }}">⏱ Then a {{ t.layover.txt }} layover in {{ t.layover.airport }}{% if t.layover.overnight %} (overnight){% endif %} before the next flight</div>{% endif %}
         {% if t.upcoming %}<div class="meta">Check-in opens {{ t.checkin.strftime('%b %-d, %-I:%M %p') }}{% if t.upgrade %} · UpFront Plus upgrade from {{ t.upgrade.strftime('%b %-d, %-I:%M %p') }}{% endif %}</div>{% endif %}
         {% if t.seat_groups %}
         <div class="meta" style="margin-top:6px">Open seats ({{ t.seats_at[5:16].replace('T',' ') }}):
@@ -48,7 +50,7 @@
   {% endfor %}
   </div>
   {% endif %}
-  <p class="muted small" style="margin-bottom:0">Seat prices and Import open a browser window on your Mac. Log in to Frontier there, open the page it asks for (the trip's seat map, or My Trips), then close the window. The app only reads; you pick and pay for seats on Frontier.</p>
+  <p class="muted small" style="margin-bottom:0">Seat prices and Import open a browser window on your Mac. Log in to Frontier there, open the page it asks for (the trip's seat map, or each trip's details from My Trips), then close the window. The app only reads; you pick and pay for seats on Frontier.</p>
 </div>
 {% include "_job.html" %}
 

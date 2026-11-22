@@ -1,7 +1,12 @@
 """Import past and upcoming trips from your Frontier account.
 
-You open My Trips (and past trips) in the account window; the app reads the
-trip data those pages load and adds any flights not already in your trip log.
+You open each trip's details in the account window; the app reads the flights
+from those pages and adds any not already in your trip log. A trip's details
+page (booking.flyfrontier.com/Booking/...) is built on Frontier's server, so the
+flights are in its HTML as journey keys like
+  F9~4277~ ~~IAD~11/28/2026 13:09~LAS~11/28/2026 15:31~~
+(carrier, flight, from, local departure, to, local arrival). JSON the pages
+load is read too, in case Frontier moves trips to an API.
 Frontier doesn't say what a flight would have cost in cash, so the cash fare
 comes from what this app saw when it found that flight, or you fill it in.
 """
@@ -47,6 +52,50 @@ def _segment(d):
     return {"date": m.group(1), "depart_time": m.group(2), "origin": o, "dest": dst, "flight_no": str(num)}
 
 
+# carrier~flight~~~FROM~MM/DD/YYYY HH:MM~TO~MM/DD/YYYY HH:MM
+_SELL_KEY = re.compile(
+    r"F9~\s*(\d{1,4})\s*~[^~<>\"]*~[^~<>\"]*~([A-Z]{3})~(\d{2})/(\d{2})/(\d{4}) (\d{2}:\d{2})"
+    r"~([A-Z]{3})~(\d{2})/(\d{2})/(\d{4}) (\d{2}:\d{2})")
+_PAGE_PNR = [
+    re.compile(r"addCustomAttribute\(\s*'PNR'\s*,\s*'([A-Z0-9]{6})'"),
+    re.compile(r"\"bookingcode\"\s*:\s*\"([A-Z0-9]{6})\""),
+    re.compile(r"name=\"rl\"\s+value=\"([A-Z0-9]{6})\""),
+    re.compile(r"[?&]rl=([A-Z0-9]{6})\b"),
+]
+
+
+def parse_page(url: str, page_html: str) -> list[dict]:
+    """Flights on one trip-details page. Pages without a booking code are skipped, so
+    flight search results opened in the same window never land in the trip log."""
+    pnr = next((m.group(1) for rx in _PAGE_PNR for m in [rx.search(url + "\n" + page_html)] if m), None)
+    if not pnr:
+        return []
+    flights = {}
+    for m in _SELL_KEY.finditer(page_html):
+        num, o, mo, dd, yy, hm, dst, amo, add, ayy, ahm = m.groups()
+        if o == dst:
+            continue
+        date = f"{yy}-{mo}-{dd}"
+        flights[(date, o, dst, num)] = {
+            "date": date, "depart_time": hm, "origin": o, "dest": dst, "flight_no": num,
+            "arrive": f"{ayy}-{amo}-{add}T{ahm}", "confirmation": pnr,
+        }
+    total = re.search(r"var\s+totalPrice\s*=\s*([\d.]+)", page_html)
+    pax = re.search(r"var\s+totalPassengers\s*=\s*(\d+)", page_html)
+    out = sorted(flights.values(), key=lambda t: (t["date"], t["depart_time"]))
+    for t in out:  # a booking's total, per traveler, split across its flights
+        t["paid"] = round(float(total.group(1)) / max(1, int(pax.group(1)) if pax else 1) / len(out), 2) if total else None
+    return out
+
+
+def parse_pages(pages) -> list[dict]:
+    found = {}
+    for url, page_html in pages:
+        for t in parse_page(url, page_html):
+            found[(t["date"], t["origin"], t["dest"], t["flight_no"])] = t
+    return sorted(found.values(), key=lambda t: (t["date"], t["depart_time"]))
+
+
 def parse_trips(blobs) -> list[dict]:
     trips = {}
 
@@ -85,14 +134,21 @@ def parse_trips(blobs) -> list[dict]:
     return sorted(out, key=lambda t: (t["date"], t["depart_time"]))
 
 
-def capture() -> tuple[list[dict], list]:
+def capture() -> tuple[list[dict], bool]:
+    """Returns (trips, whether any Frontier pages were seen at all)."""
     print("Import trips from your Frontier account:")
+    pages = []
     blobs = account.capture(
         account.looks_like(r"(flightNumber|flightNo).*(depart|std)|(depart|std).*(flightNumber|flightNo)"),
-        ["Log in and open My Trips. Open each upcoming trip you want, and Past Trips too.",
-         "When you've opened them, close the browser window."],
+        ["Log in, go to My Trips, and open each trip you want to import (its flight details page).",
+         "Wait for each trip's flights to show, then close the browser window."],
+        pages=pages,
     )
-    trips = parse_trips(blobs)
-    if blobs and not trips:
-        account.save_debug("trips", blobs)
-    return trips, blobs
+    found = {}
+    for t in parse_trips(blobs) + parse_pages(pages):  # a trip page's details win over JSON's
+        key = (t["date"], t["origin"], t["dest"], t["flight_no"])
+        found[key] = {**found.get(key, {}), **{k: v for k, v in t.items() if v is not None}}
+    trips = sorted(found.values(), key=lambda t: (t["date"], t["depart_time"]))
+    if not trips and (blobs or pages):
+        account.save_debug("trips", {"json": blobs, "pages": pages})
+    return trips, bool(blobs or pages)

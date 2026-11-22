@@ -82,7 +82,8 @@ def run_import(conn):
 
     trips, raw = mytrips.capture()
     if not trips:
-        print("No trips seen." + (" Saved what was captured to debug/." if raw else " Did My Trips load?"))
+        print("No trips found." + (" Open a trip's details (not just the My Trips list) before closing the window."
+                                   " What the window saw is saved in debug/." if raw else " Did Frontier's site load?"))
         return 1
     added = db.import_trips(conn, trips)
     print(f"Found {len(trips)} flights, added {added} new ones to your trip log.")
