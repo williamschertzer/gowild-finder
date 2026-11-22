@@ -1,9 +1,26 @@
-{# one GoWild flight; expects f (flight) and book_url, plus origin/dest/date #}
-<div class="item">
+{# one GoWild itinerary; expects f (flight, see web.decorate_flight) and book_url, plus origin/dest/date #}
+<div class="item flight">
   <div class="main">
-    <b>{{ f.dep_txt }}</b> <span class="muted">→ {{ f.arr_txt }}</span>
-    <div class="meta">{{ origin }} → {{ dest }} · {{ f.flight_numbers|join(', ') or 'flight ?' }}{% if f.stops %} · {{ f.stops }}{% endif %}{% if f.aircraft %} · {{ f.aircraft }}{% endif %}</div>
+    <div class="when">
+      <b>{{ f.dep_txt }}{% if f.arr_txt %} → {{ f.arr_txt }}{% endif %}</b>
+      {% if f.days_later %}<span class="pill nextday" title="Lands {{ f.days_later }} day{{ 's' if f.days_later > 1 }} after it leaves">+{{ f.days_later }} day{{ 's' if f.days_later > 1 }} · lands {{ f.arr_day }}</span>{% endif %}
+    </div>
+    <div class="meta">
+      {% if f.total_txt %}<span class="total">{{ f.total_txt }} total</span> · {% endif %}{{ f.stops_txt or f.stops or '' }}{% if f.stops_txt or f.stops %} · {% endif %}{{ f.route or (origin ~ ' → ' ~ dest) }}{% if not f.layovers %} · F9 {{ f.flight_numbers|join(', ') or '?' }}{% endif %}{% if f.aircraft %} · {{ f.aircraft }}{% endif %}
+    </div>
     {% if f.front_seats %}<div class="meta"><span class="pill early">{{ f.front_seats }} seats</span></div>{% endif %}
+    {% if f.layovers %}
+    <ol class="legs">
+      {% for l in f.legs %}
+      <li class="leg"><span class="fno">F9 {{ l.flight }}</span> {{ l['from'] }} {{ l.dep_txt }} → {{ l.to }} {{ l.arr_txt }}{% if l.days_later %} <span class="plus">+{{ l.days_later }}</span>{% endif %}</li>
+      {% if not loop.last %}{% set lay = f.layovers[loop.index0] %}
+      <li class="layover{{ ' long' if lay.long or lay.overnight }}">{{ lay.txt }} layover in {{ lay.airport }}{% if lay.overnight %} · overnight{% elif lay.long %} · long{% endif %}</li>
+      {% endif %}
+      {% endfor %}
+    </ol>
+    {% elif f.stale and f.flight_numbers|length > 1 %}
+    <div class="meta small">Run the check again to see layover times.</div>
+    {% endif %}
     <div class="meta">GoWild {{ '$%.2f'|format(f.gowild_price) if f.gowild_price is not none else 'available' }}{% if f.gowild_seats %} · {{ f.gowild_seats }} left{% endif %}{% if f.standard_fare %} · cash ${{ '%.0f'|format(f.standard_fare) }}{% endif %}</div>
   </div>
   <div class="side">

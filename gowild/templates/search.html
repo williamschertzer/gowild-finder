@@ -43,6 +43,6 @@
     {% for f in c.flights %}{% with book_url=c.url, origin=c.origin, dest=c.dest, date=c.date %}{% include "_flight.html" %}{% endwith %}{% endfor %}
     </div>
   {% endfor %}
-  <p class="muted small">Book opens Frontier for that date. Log in, pick the flight and choose the GoWild fare. Early Booking prices include Frontier's early booking charge.</p>
+  <p class="muted small">Book opens Frontier for that date. Log in, pick the flight and choose the GoWild fare. Early Booking prices include Frontier's early booking charge. Times are local to each airport; total time is door to door, layovers included.</p>
 </div>
 {% endblock %}

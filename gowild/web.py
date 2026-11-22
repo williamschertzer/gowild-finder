@@ -19,12 +19,56 @@ def _hhmm(iso):
     return datetime.fromisoformat(iso[:16]).strftime("%-I:%M %p") if iso else "?"
 
 
+def duration_txt(minutes):
+    """245 -> '4h 05m'; 50 -> '50m'."""
+    if minutes is None:
+        return None
+    h, m = divmod(int(minutes), 60)
+    return f"{h}h {m:02d}m" if h else f"{m}m"
+
+
+def days_later(start_iso, end_iso) -> int:
+    """How many calendar days after start_iso's date end_iso falls (local dates)."""
+    try:
+        return (date.fromisoformat(end_iso[:10]) - date.fromisoformat(start_iso[:10])).days
+    except (TypeError, ValueError):
+        return 0
+
+
+LONG_LAYOVER = 6 * 60  # Frontier flags layovers of six hours or more
+
+
+def decorate_flight(f):
+    """Display text for one itinerary: times, next-day arrival, total time, each leg and layover."""
+    f["dep_txt"] = _hhmm(f["depart"])
+    if "legs" not in f:
+        # saved before the app read each leg; its arrival time came out in UTC, so don't show it
+        f["arr_txt"], f["stale"] = None, True
+        return f
+    f["arr_txt"] = _hhmm(f["arrive"])
+    f["days_later"] = days_later(f["depart"], f["arrive"])
+    f["arr_day"] = datetime.fromisoformat(f["arrive"][:16]).strftime("%a, %b %-d") if f["days_later"] else None
+    f["total_txt"] = duration_txt(f.get("minutes"))
+    legs = f["legs"]
+    stations = [legs[0]["from"]] + [l["to"] for l in legs] if legs else []
+    f["route"] = " → ".join(stations) if stations and all(stations) else None
+    for l in legs:
+        l["dep_txt"], l["arr_txt"] = _hhmm(l["depart"]), _hhmm(l["arrive"])
+        l["days_later"] = days_later(f["depart"], l["arrive"])
+    for lay in f.get("layovers") or []:
+        lay["txt"] = duration_txt(lay["minutes"])
+        lay["long"] = (lay["minutes"] or 0) >= LONG_LAYOVER
+    n = len(legs) - 1
+    f["stops_txt"] = "Nonstop" if n == 0 else f"{n} stop{'s' if n > 1 else ''}"
+    return f
+
+
 def _decorate(check):
     """Add what the templates need to each check row."""
     d = date.fromisoformat(check["date"])
     early = rules.is_early_booking(d, check["origin"], check["dest"])
     for f in check["flights"]:
-        f["dep_txt"], f["arr_txt"] = _hhmm(f["depart"]), _hhmm(f["arrive"])
+        decorate_flight(f)
     check["early"] = early and bool(check["flights"])
     check["blackout"] = rules.is_blackout(d)
     check["url"] = search_url(check["origin"], check["dest"], check["date"])
@@ -398,11 +442,24 @@ def create_app(db_path=None, phone_access=False):
             t["saved"] = round((t["cash_fare"] or 0) - (t["paid"] or 0), 2)
             if t["depart_time"]:
                 dep = datetime.fromisoformat(f"{t['date']}T{t['depart_time']}")
+                t["dep_txt"] = _hhmm(dep.isoformat())
                 t["upcoming"] = dep > now
                 t["checkin"] = rules.checkin_opens(dep)
                 t["upgrade"] = rules.upgrade_window_opens(dep, tier)
             t["seats_at"], snap = db.latest_seats(c, t["id"])
             t["seat_groups"] = seats.summarize(snap)
+            if t.get("arrive"):
+                t["arr_txt"] = _hhmm(t["arrive"])
+                t["days_later"] = days_later(t["date"], t["arrive"])
+                if t["days_later"]:
+                    t["arr_day"] = datetime.fromisoformat(t["arrive"][:16]).strftime("%a, %b %-d")
+        for a, b in zip(trips, trips[1:]):
+            # a connection: the next flight of the same booking leaves from where this one lands, within a day
+            if a.get("arrive") and b["depart_time"] and a["confirmation"] and a["confirmation"] == b["confirmation"] and a["dest"] == b["origin"]:
+                gap = round((datetime.fromisoformat(f"{b['date']}T{b['depart_time']}") - datetime.fromisoformat(a["arrive"][:16])).total_seconds() / 60)
+                if 0 <= gap < 24 * 60:
+                    a["layover"] = {"airport": a["dest"], "txt": duration_txt(gap), "long": gap >= LONG_LAYOVER,
+                                    "overnight": b["date"] > a["arrive"][:10]}
         summary = value.summarize(trips, price, rules.PASS_END)
         return render_template("value.html", trips=trips, v=summary, price=price, tier=tier, prefill=request.args, job=_job("account"))
 

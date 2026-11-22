@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a9563"/>
+      <stop offset="1" stop-color="#145a38"/>
+    </linearGradient>
+    <linearGradient id="trail" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffd25a" stop-opacity="0"/>
+      <stop offset=".45" stop-color="#ffd25a"/>
+      <stop offset="1" stop-color="#ffc233"/>
+    </linearGradient>
+  </defs>
+  <rect id="tile" width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- gold contrail sweeping up to the plane -->
+  <path d="M58 430 C 150 420 230 380 292 300" fill="none" stroke="url(#trail)" stroke-width="34" stroke-linecap="round"/>
+  <!-- plane, climbing to the upper right -->
+  <g transform="translate(318 214) rotate(45) scale(2.9) translate(-50 -50)" fill="#fff">
+    <path d="M50 4 C54.5 4 57 10 57 17 L57 38 L94 59 L94 68 L57 57.5 L57 79 L69 88 L69 95 L50 90 L31 95 L31 88 L43 79 L43 57.5 L6 68 L6 59 L43 38 L43 17 C43 10 45.5 4 50 4 Z"/>
+  </g>
+  <!-- a spark: the "wild" in GoWild -->
+  <path d="M120 112 l13 31 31 13 -31 13 -13 31 -13 -31 -31 -13 31 -13 z" fill="#ffd25a"/>
+</svg>

@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS trips (
     cash_fare REAL NOT NULL DEFAULT 0,  -- what the same flight cost without the pass
     paid REAL NOT NULL DEFAULT 0,       -- what you paid with GoWild (taxes, fees, early charge)
     confirmation TEXT,
-    notes TEXT
+    notes TEXT,
+    arrive TEXT                         -- local arrival 'YYYY-MM-DDTHH:MM', when known
 );
 CREATE TABLE IF NOT EXISTS seat_snapshots (
     trip_id INTEGER NOT NULL,
@@ -59,6 +60,9 @@ def connect(path: str | None = None) -> sqlite3.Connection:
         conn.commit()
     if "position" not in cols:  # user-chosen order; 0 everywhere falls back to newest first
         conn.execute("ALTER TABLE searches ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+    if "arrive" not in {r["name"] for r in conn.execute("PRAGMA table_info(trips)")}:
+        conn.execute("ALTER TABLE trips ADD COLUMN arrive TEXT")
         conn.commit()
     return conn
 
@@ -124,6 +128,9 @@ def import_trips(conn, trips) -> int:
             (t["date"], t["origin"], t["dest"], t["flight_no"]),
         ).fetchone()
         if dup:
+            if t.get("arrive"):  # fill in what an earlier import didn't know
+                conn.execute("UPDATE trips SET arrive=? WHERE date=? AND origin=? AND dest=? AND flight_no=? AND arrive IS NULL",
+                             (t["arrive"], t["date"], t["origin"], t["dest"], t["flight_no"]))
             continue
         cash, paid = 0.0, t.get("paid")
         row = conn.execute("SELECT flights FROM checks WHERE origin=? AND dest=? AND date=?", (t["origin"], t["dest"], t["date"])).fetchone()
@@ -132,9 +139,9 @@ def import_trips(conn, trips) -> int:
                 cash = f.get("standard_fare") or 0.0
                 paid = paid if paid is not None else f.get("gowild_price")
         conn.execute(
-            "INSERT INTO trips (date, depart_time, origin, dest, flight_no, cash_fare, paid, confirmation, notes) VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO trips (date, depart_time, origin, dest, flight_no, cash_fare, paid, confirmation, notes, arrive) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (t["date"], t["depart_time"], t["origin"], t["dest"], t["flight_no"], cash, paid or 0.0, t.get("confirmation"),
-             "imported" + ("" if cash else "; add cash fare")),
+             "imported" + ("" if cash else "; add cash fare"), t.get("arrive")),
         )
         added += 1
     conn.commit()
